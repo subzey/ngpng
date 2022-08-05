@@ -20,6 +20,13 @@ interface IBootstrapVariables {
 	_negative: ITemplateVaryingPart;
 }
 
+const MagicFunctions = {
+	_anyDigit: createAnyDigit,
+	_anyPositiveDigit: createAnyPositiveDigit,
+} as const;
+
+type MagicFunctionName = keyof typeof MagicFunctions
+
 export function createTemplate(sourceText: string) {
 	const variables: IBootstrapVariables = {
 		_canvas: createVariable('c'),
@@ -29,7 +36,7 @@ export function createTemplate(sourceText: string) {
 		_negative: createVariable('p'),
 	};
 	const onloadTemplate = createJsTemplate(
-		"_ctx=_canvas.getContext`2d`;for(_negative=_evaledString='';_zero=_ctx.getImageData(159,0,_anyPositiveInteger,!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyInteger,eval)(e)",
+		"_ctx=_canvas.getContext`2d`;for(_negative=_evaledString='';_zero=_ctx.getImageData(159,0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(e)",
 		variables
 	);
 	const payloadTemplate = createJsTemplate(
@@ -37,7 +44,7 @@ export function createTemplate(sourceText: string) {
 		variables
 	);
 
-	const [htmlHead, htmlMid, htmlTail] = "<canvas/id=🎨><img/onload=🏭 src=#".split(/[🎨🏭]/u).map(createHtmlTemplate);
+	const [htmlHead, htmlMid, htmlTail] = "<canvas/id=🎨><img/onload=🏭 src=#>".split(/[🎨🏭]/u).map(createHtmlTemplate);
 
 	return mergeTemplates(
 		htmlHead,
@@ -71,6 +78,8 @@ function createHtmlTemplate(template: string): ITemplate {
 function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVariables): ITemplate {
 	const collectedIds: Map<number, { name: string, end: number }> = new Map();
 	const collectedQuotes: Map<number, { end: number }> = new Map();
+	const collectedAnys: Map<number, { name: MagicFunctionName, end: number }> = new Map();
+
 
 	// Serious business
 	const sourceFile = typescript.createSourceFile(
@@ -82,6 +91,18 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 	);
 	const traverse = (node: typescript.Node): void => {
 		// console.log(typescript.SyntaxKind[node.kind]);
+		if (typescript.isCallExpression(node)) {
+			const calleeNode = node.expression;
+			if (typescript.isIdentifier(calleeNode)) {
+				const calleeName = calleeNode.text;
+				if (MagicFunctions.hasOwnProperty(calleeName)) {
+					const start = node.getStart(sourceFile);
+					const end = node.getEnd();
+					collectedAnys.set(start, { name: calleeName as MagicFunctionName, end });
+					return;
+				}
+			}
+		}
 		if (typescript.isIdentifier(node)) {
 			const name = node.text;
 			if (shouldRenameIdentifier(name, bootstrapVariables)) {
@@ -89,8 +110,11 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 				const end = node.getEnd();
 				collectedIds.set(start, { name, end });
 			}
-		} else if (typescript.isStringLiteral(node)) {
+			return;
+		}
+		if (typescript.isStringLiteral(node)) {
 			collectedQuotes.set(node.getStart(), { end: node.getEnd() });
+			return;
 		}
 		node.forEachChild(traverse);
 	}
@@ -115,21 +139,20 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 				continue;
 			}
 		}
+		if (collectedAnys.has(index)) {
+			let { name, end } = collectedAnys.get(index)!;
+			templateContents.push(MagicFunctions[name]());
+			index = end - 1;
+			continue;
+		}
 		if (collectedIds.has(index)) {
 			let { name, end } = collectedIds.get(index)!;
-			let id: ITemplateVaryingPart;
-			if (name === '_anyInteger') {
-				id = createInteger();
-			} else if (name === '_anyPositiveInteger') {
-				id = createPositiveInteger();
-			} else {
-				id = (
-					identifiersByName.get(name) ??
-					bootstrapVariables[name as keyof typeof bootstrapVariables] ??
-					createVariable(name[0])
-				);
-				identifiersByName.set(name, id);
-			}
+			const id = (
+				identifiersByName.get(name) ??
+				bootstrapVariables[name as keyof typeof bootstrapVariables] ??
+				createVariable(name[0])
+			);
+			identifiersByName.set(name, id);
 			templateContents.push(id);
 			index = end - 1;
 			continue;
@@ -203,13 +226,13 @@ function createRegularQuote(): ITemplateVaryingPart {
 	);
 }
 
-function createPositiveInteger(): ITemplateVaryingPart {
+function createAnyPositiveDigit(): ITemplateVaryingPart {
 	return new Set(
 		Array.from('123456789', ch => ch.charCodeAt(0))
 	);
 }
 
-function createInteger(): ITemplateVaryingPart {
+function createAnyDigit(): ITemplateVaryingPart {
 	return new Set(
 		Array.from('0123456789', ch => ch.charCodeAt(0))
 	);
