@@ -1,60 +1,36 @@
 import typescript from 'typescript';
-export function createBootstrapTemplate() {
-    const t = "<canvas id=c><img onload=b=c.getContext`2d`;for(p=e='';t=b.getImageData(159,0,1,!b.drawImage(this,p--,0)).data[0];)e+=String.fromCharCode(t);(1,eval)(e) src=#>";
-    const f = "_^^^^^^A^^_V__^^^A^^^^^^_V_V____________________V_V_QQ_V_V____________________P__V________________V________________V______________________V___I_______V_W^^^___";
-    const variablesByName = new Map();
-    const contents = [];
-    const quote = createRegularQuote();
-    for (let i = 0; i < t.length; i++) {
-        const character = t[i];
-        switch (f[i]) {
-            case '_': // Nothing
-                contents.push(character.charCodeAt(0));
-                break;
-            case '^': // Recase
-                contents.push(recase(character));
-                break;
-            case 'A': // Attribute separator
-                contents.push(createHtmlAttributeSeparator());
-                break;
-            case 'W': // Some attributes cannot be separated by /
-                contents.push(createHtmlWhitespace());
-                break;
-            case 'Q':
-                contents.push(quote); // Both quotes are the same
-                break;
-            case 'P':
-                contents.push(createPositiveInteger());
-                break;
-            case 'I':
-                contents.push(createInteger());
-                break;
-            case 'V': // Variable
-                let variable = variablesByName.get(character);
-                if (variable === undefined) {
-                    variable = createVariable(character);
-                    variablesByName.set(character, variable);
-                }
-                contents.push(variable);
-                break;
-            default:
-                throw new Error('Unreachable');
+export function createTemplate(sourceText) {
+    const variables = {
+        _canvas: createVariable('c'),
+        _ctx: createVariable('b'),
+        _zero: createVariable('t'),
+        _evaledString: createVariable('e'),
+        _negative: createVariable('p'),
+    };
+    const onloadTemplate = createJsTemplate("_ctx=_canvas.getContext`2d`;for(_negative=_evaledString='';_zero=_ctx.getImageData(159,0,_anyPositiveInteger,!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyInteger,eval)(e)", variables);
+    const payloadTemplate = createJsTemplate(sourceText, variables);
+    const [htmlHead, htmlMid, htmlTail] = "<canvas/id=🎨><img/onload=🏭 src=#".split(/[🎨🏭]/u).map(createHtmlTemplate);
+    return mergeTemplates(htmlHead, { contents: [variables._canvas], exclusiveGroups: [] }, htmlMid, onloadTemplate, htmlTail, payloadTemplate);
+}
+function createHtmlTemplate(template) {
+    const templateContents = [];
+    for (const ch of template) {
+        if (ch === '/') {
+            templateContents.push(createHtmlAttributeSeparator());
+            continue;
         }
+        if (ch === ' ') {
+            templateContents.push(createHtmlWhitespace());
+            continue;
+        }
+        templateContents.push(recase(ch));
     }
-    const variableExclusiveGroup = new Set(variablesByName.values());
     return {
-        contents,
-        exclusiveGroups: [variableExclusiveGroup],
-        variables: Object.assign(Object.create(null), // We don't want "__proto__" to be a valid key
-        {
-            _canvas: variablesByName.get('c'),
-            _ctx: variablesByName.get('b'),
-            _evaledString: variablesByName.get('e'),
-            _zero: variablesByName.get('t')
-        }),
+        contents: templateContents,
+        exclusiveGroups: [],
     };
 }
-export function createPayloadTemplate(sourceText, bootstrapVariables) {
+function createJsTemplate(sourceText, bootstrapVariables) {
     const collectedIds = new Map();
     const collectedQuotes = new Map();
     // Serious business
@@ -96,10 +72,19 @@ export function createPayloadTemplate(sourceText, bootstrapVariables) {
         }
         if (collectedIds.has(index)) {
             let { name, end } = collectedIds.get(index);
-            let id = (identifiersByName.get(name) ??
-                bootstrapVariables[name] ??
-                createVariable(name[0]));
-            identifiersByName.set(name, id);
+            let id;
+            if (name === '_anyInteger') {
+                id = createInteger();
+            }
+            else if (name === '_anyPositiveInteger') {
+                id = createPositiveInteger();
+            }
+            else {
+                id = (identifiersByName.get(name) ??
+                    bootstrapVariables[name] ??
+                    createVariable(name[0]));
+                identifiersByName.set(name, id);
+            }
             templateContents.push(id);
             index = end - 1;
             continue;
@@ -109,6 +94,12 @@ export function createPayloadTemplate(sourceText, bootstrapVariables) {
     return {
         contents: templateContents,
         exclusiveGroups: [new Set(identifiersByName.values())],
+    };
+}
+function mergeTemplates(...templates) {
+    return {
+        contents: [].concat(...templates.map(t => t.contents)),
+        exclusiveGroups: [].concat(...templates.map(t => t.exclusiveGroups)),
     };
 }
 function shouldRenameIdentifier(name, bootstrapVariables) {

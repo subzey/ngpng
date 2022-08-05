@@ -1,4 +1,4 @@
-import { ITemplatePart, ITemplateVaryingPart } from "./moving-part";
+import { ITemplatePart } from "./moving-part";
 interface ITemplate {
     /** Numbers or sets of numbers to pick from */
     readonly contents: readonly ITemplatePart[];
@@ -9,16 +9,6 @@ interface ITemplate {
      */
     readonly exclusiveGroups: readonly ReadonlySet<ITemplatePart>[];
 }
-interface IBootstrapVariables {
-    _canvas: ITemplateVaryingPart;
-    _ctx: ITemplateVaryingPart;
-    _zero: ITemplateVaryingPart;
-    _evaledString: ITemplateVaryingPart;
-}
-interface IBootstapTemplate extends ITemplate {
-    variables: IBootstrapVariables;
-}
-export declare function createBootstrapTemplate(): IBootstapTemplate;
-export declare function createPayloadTemplate(sourceText: string, bootstrapVariables: IBootstrapVariables): ITemplate;
+export declare function createTemplate(sourceText: string): ITemplate;
 export declare function dumpTemplate(template: readonly ITemplatePart[]): string;
 export {};
