@@ -13,7 +13,7 @@ export function createTemplate(sourceText) {
     };
     const onloadTemplate = createJsTemplate("_ctx=_canvas.getContext`2d`;for(_negative=_evaledString='';_zero=_ctx.getImageData(159,0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(e)", variables);
     const payloadTemplate = createJsTemplate(sourceText, variables);
-    const [htmlHead, htmlMid, htmlTail] = "<canvas/id=🎨><img/onload=🏭 src=#".split(/[🎨🏭]/u).map(createHtmlTemplate);
+    const [htmlHead, htmlMid, htmlTail] = "<canvas/id=🎨><img/onload=🏭 src=#>".split(/[🎨🏭]/u).map(createHtmlTemplate);
     return mergeTemplates(htmlHead, { contents: [variables._canvas], exclusiveGroups: [] }, htmlMid, onloadTemplate, htmlTail, payloadTemplate);
 }
 function createHtmlTemplate(template) {
@@ -37,26 +37,25 @@ function createHtmlTemplate(template) {
 function createJsTemplate(sourceText, bootstrapVariables) {
     const collectedIds = new Map();
     const collectedQuotes = new Map();
-    const collectedAnys = new Map();
+    const collectedMagic = new Map();
     // Serious business
     const sourceFile = typescript.createSourceFile('payload.js', sourceText, typescript.ScriptTarget.ESNext, true, typescript.ScriptKind.JS);
     const traverse = (node) => {
-        // console.log(typescript.SyntaxKind[node.kind]);
         if (typescript.isCallExpression(node)) {
             const calleeNode = node.expression;
-            if (typescript.isIdentifier(calleeNode)) {
+            if (typescript.isIdentifier(calleeNode) && !identifierIsPropertyName(calleeNode)) {
                 const calleeName = calleeNode.text;
                 if (MagicFunctions.hasOwnProperty(calleeName)) {
                     const start = node.getStart(sourceFile);
                     const end = node.getEnd();
-                    collectedAnys.set(start, { name: calleeName, end });
+                    collectedMagic.set(start, { name: calleeName, end });
                     return;
                 }
             }
         }
         if (typescript.isIdentifier(node)) {
             const name = node.text;
-            if (shouldRenameIdentifier(name, bootstrapVariables)) {
+            if (shouldRenameIdentifier(name, bootstrapVariables, identifierIsPropertyName(node))) {
                 const start = node.getStart(sourceFile);
                 const end = node.getEnd();
                 collectedIds.set(start, { name, end });
@@ -89,8 +88,8 @@ function createJsTemplate(sourceText, bootstrapVariables) {
                 continue;
             }
         }
-        if (collectedAnys.has(index)) {
-            let { name, end } = collectedAnys.get(index);
+        if (collectedMagic.has(index)) {
+            let { name, end } = collectedMagic.get(index);
             templateContents.push(MagicFunctions[name]());
             index = end - 1;
             continue;
@@ -118,20 +117,39 @@ function mergeTemplates(...templates) {
         exclusiveGroups: [].concat(...templates.map(t => t.exclusiveGroups)),
     };
 }
-function shouldRenameIdentifier(name, bootstrapVariables) {
-    if (name.length === 1) {
-        return true;
-    }
-    if (name.startsWith('__')) {
-        return false;
-    }
+function shouldRenameIdentifier(name, bootstrapVariables, isProp) {
     if (name.startsWith('_')) {
-        return true;
+        if (name.startsWith('__')) {
+            // `__proto__` or `obj.__lookupSetter__`
+            return false;
+        }
+        else {
+            // `_temp1` or `omg._tempProp1`
+            return true;
+        }
     }
-    if (name in bootstrapVariables) {
-        return true;
+    if (!isProp) {
+        if (name in bootstrapVariables) {
+            // `_ctx` but not `woot._ctx`
+            return true;
+        }
+        if (name.length === 1) {
+            // `x` but not `box.x`
+            return true;
+        }
     }
     return false;
+}
+function identifierIsPropertyName(node) {
+    const parentNode = node.parent;
+    if (!typescript.isPropertyAccessExpression(parentNode) &&
+        !typescript.isPropertyAssignment(parentNode)) {
+        return false;
+    }
+    if (parentNode.name !== node) {
+        return false;
+    }
+    return true;
 }
 function recase(character) {
     const charCode = character.charCodeAt(0);

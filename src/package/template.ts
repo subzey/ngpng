@@ -78,8 +78,7 @@ function createHtmlTemplate(template: string): ITemplate {
 function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVariables): ITemplate {
 	const collectedIds: Map<number, { name: string, end: number }> = new Map();
 	const collectedQuotes: Map<number, { end: number }> = new Map();
-	const collectedAnys: Map<number, { name: MagicFunctionName, end: number }> = new Map();
-
+	const collectedMagic: Map<number, { name: MagicFunctionName, end: number }> = new Map();
 
 	// Serious business
 	const sourceFile = typescript.createSourceFile(
@@ -89,23 +88,23 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 		true,
 		typescript.ScriptKind.JS
 	);
+
 	const traverse = (node: typescript.Node): void => {
-		// console.log(typescript.SyntaxKind[node.kind]);
 		if (typescript.isCallExpression(node)) {
 			const calleeNode = node.expression;
-			if (typescript.isIdentifier(calleeNode)) {
+			if (typescript.isIdentifier(calleeNode) && !identifierIsPropertyName(calleeNode)) {
 				const calleeName = calleeNode.text;
 				if (MagicFunctions.hasOwnProperty(calleeName)) {
 					const start = node.getStart(sourceFile);
 					const end = node.getEnd();
-					collectedAnys.set(start, { name: calleeName as MagicFunctionName, end });
+					collectedMagic.set(start, { name: calleeName as MagicFunctionName, end });
 					return;
 				}
 			}
 		}
 		if (typescript.isIdentifier(node)) {
 			const name = node.text;
-			if (shouldRenameIdentifier(name, bootstrapVariables)) {
+			if (shouldRenameIdentifier(name, bootstrapVariables, identifierIsPropertyName(node))) {
 				const start = node.getStart(sourceFile);
 				const end = node.getEnd();
 				collectedIds.set(start, { name, end });
@@ -139,8 +138,8 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 				continue;
 			}
 		}
-		if (collectedAnys.has(index)) {
-			let { name, end } = collectedAnys.get(index)!;
+		if (collectedMagic.has(index)) {
+			let { name, end } = collectedMagic.get(index)!;
 			templateContents.push(MagicFunctions[name]());
 			index = end - 1;
 			continue;
@@ -174,20 +173,41 @@ function mergeTemplates(...templates: ITemplate[]): ITemplate {
 	};
 }
 
-function shouldRenameIdentifier(name: string, bootstrapVariables: IBootstrapVariables): boolean {
-	if (name.length === 1) {
-		return true;
-	}
-	if (name.startsWith('__')) {
-		return false;
-	}
+function shouldRenameIdentifier(name: string, bootstrapVariables: IBootstrapVariables, isProp: boolean): boolean {
 	if (name.startsWith('_')) {
-		return true;
+		if (name.startsWith('__')) {
+			// `__proto__` or `obj.__lookupSetter__`
+			return false;
+		} else {
+			// `_temp1` or `omg._tempProp1`
+			return true;
+		}
 	}
-	if (name in bootstrapVariables) {
-		return true;
+	if (!isProp) {
+		if (name in bootstrapVariables) {
+			// `_ctx` but not `woot._ctx`
+			return true;
+		}
+		if (name.length === 1) {
+			// `x` but not `box.x`
+			return true;
+		}
 	}
 	return false;
+}
+
+function identifierIsPropertyName(node: typescript.Identifier): boolean {
+	const parentNode = node.parent;
+	if (
+		!typescript.isPropertyAccessExpression(parentNode) &&
+		!typescript.isPropertyAssignment(parentNode)
+	) {
+		return false;
+	}
+	if (parentNode.name !== node) {
+		return false;
+	}
+	return true;
 }
 
 function recase(character: string): ITemplatePart {
