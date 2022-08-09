@@ -1,16 +1,6 @@
-import { ITemplatePart, ITemplateVaryingPart } from "./moving-part";
-import typescript from 'typescript';
+import type { ITemplatePart, ITemplateVaryingPart, ITemplate, IAssumption } from "./interface";
 
-interface ITemplate {
-	/** Numbers or sets of numbers to pick from */
-	readonly contents: readonly ITemplatePart[];
-	/** 
-	 * All the sets inside a group should end up with the different values.
-	 * Those are typically the variable names. `[ Set{ a, b }, Set{ a, b } ]`
-	 * may become `[a, b]` or `[b, a]`, but not `[a, a]` or `[b, b]`
-	 */
-	readonly exclusiveGroups: readonly ReadonlySet<ITemplatePart>[];
-}
+import typescript from 'typescript';
 
 interface IBootstrapVariables {
 	_canvas: ITemplateVaryingPart;
@@ -25,9 +15,143 @@ const MagicFunctions = {
 	_anyPositiveDigit: createAnyPositiveDigit,
 } as const;
 
-type MagicFunctionName = keyof typeof MagicFunctions
+type MagicFunctionName = keyof typeof MagicFunctions;
 
-export function createTemplate(sourceText: string) {
+class Template implements ITemplate {
+	public readonly contents: readonly ITemplatePart[];
+	public readonly exclusiveGroups: readonly (ReadonlySet<ITemplateVaryingPart>)[];
+	protected readonly _exclusivesMap: ReadonlyMap<ITemplateVaryingPart, ReadonlySet<ITemplateVaryingPart>>;
+
+	constructor(contents: readonly ITemplatePart[], exclusiveGroups: readonly (ReadonlySet<ITemplateVaryingPart>)[]) {
+		this.exclusiveGroups = exclusiveGroups;
+		this._exclusivesMap = this._createExclusivesFromArray(exclusiveGroups);
+		this.contents = contents;
+	}
+
+	static merge(...templates: readonly ITemplate[]): Template {
+		return new this(
+			([] as ITemplatePart[]).concat(...templates.map(t => t.contents)),
+			([] as ReadonlySet<ITemplateVaryingPart>[]).concat(...templates.map(t => t.exclusiveGroups)),
+		);
+	}
+
+	public get(assumption: IAssumption, index: number): ITemplatePart | undefined {
+		if (index < 0 || index >= this.contents.length) {
+			return undefined;
+		}
+		const value = this.contents[index];
+		if (typeof value !== 'number' && assumption.has(value)) {
+			return assumption.get(value)
+		}
+		return value;
+	}
+
+	public isMatching(assumption: IAssumption, indexA: number, indexB: number): boolean {
+		if (
+			indexA < 0 || indexA >= this.contents.length ||
+			indexB < 0 || indexB >= this.contents.length
+		) {
+			// Out of bound values never matches
+			return false;
+		}
+		const partA = this.contents[indexA];
+		const partB = this.contents[indexB];
+
+		if (typeof partA !== 'number' && typeof partB !== 'number') {
+			const exclusiveSet = this._exclusivesMap.get(partA);
+			if (exclusiveSet !== undefined && exclusiveSet.has(partB)) {
+				// Sets from the same exclusive group cannot match
+				// regardless of the assumption
+				return false;
+			}
+		}
+
+		const valueA = (typeof partA !== 'number' && assumption.get(partA)) || partA;
+		const valueB = (typeof partB !== 'number' && assumption.get(partB)) || partB;
+
+		if (typeof valueA === 'number') {
+			if (typeof valueB === 'number') {
+				return valueA === valueB;
+			}
+			return valueB.has(valueA);
+		}
+		if (typeof valueB === 'number') {
+			return valueA.has(valueB);
+		}
+
+		const smallerSet = valueA.size < valueB.size ? valueA : valueB;
+		const biggerSet = valueA === smallerSet ? valueB : valueA;
+		for (const v of smallerSet) {
+			if (biggerSet.has(v)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	public dump(from=0, to=Infinity) {
+		let rv = '';
+		const fmt = (charCode: number): string => {
+			if (charCode === 0x0A || charCode === 0x0D) {
+				return '⮠';
+			}
+			if (charCode === 0x09) {
+				return '⇥';
+			}
+			return String.fromCharCode(charCode);
+		}
+	
+		let lastColorPhase = 0;
+		const colorBySet: Map<ReadonlySet<unknown>, string> = new Map();
+		const start = Math.max(Math.ceil(from), 0);
+		const end = Math.min(to, this.contents.length);
+
+		for (let i = start; i < end; i++) {
+			const item = this.contents[i];
+			if (typeof item === 'number') {
+				rv += fmt(item);
+			} else {
+				let ansiColor = colorBySet.get(item);
+				if (ansiColor === undefined) {
+					ansiColor = [
+						Math.round((Math.cos(lastColorPhase + 0 * Math.PI * 2 / 3) + 1) * 127.5),
+						Math.round((Math.cos(lastColorPhase + 1 * Math.PI * 2 / 3) + 1) * 127.5),
+						Math.round((Math.cos(lastColorPhase + 2 * Math.PI * 2 / 3) + 1) * 127.5),
+					].join(';')
+					lastColorPhase += Math.PI * 2 * (2 / (1 + Math.sqrt(5)));
+					colorBySet.set(item, ansiColor);
+				}
+				rv += `\u001b[30m\u001b[48;2;${ansiColor}m` + Array.from(item, fmt).join('') + '\u001b[39;49m';
+			}
+		}
+		return rv;
+	}
+
+	private _createExclusivesFromArray(exclusiveGroups: readonly (ReadonlySet<ITemplateVaryingPart>)[]): ReadonlyMap<ITemplateVaryingPart, ReadonlySet<ITemplateVaryingPart>> {
+		const exclusives: Map<ITemplateVaryingPart, Set<ITemplateVaryingPart>> = new Map();
+		for (const exclusiveGroup of exclusiveGroups) {
+			for (const part of exclusiveGroup) {
+				if (!exclusives.has(part)) {
+					exclusives.set(part, new Set());
+				}
+				for (const otherPart of exclusiveGroup) {
+					if (part === otherPart) {
+						continue;
+					}
+					if (!exclusives.has(otherPart)) {
+						exclusives.set(otherPart, new Set());
+					}
+					exclusives.get(part)!.add(otherPart);
+					exclusives.get(otherPart)!.add(part);
+				}
+			}
+		}
+		return exclusives;
+	}
+}
+
+export function createTemplate(sourceText: string, keepNames: ReadonlySet<string> = new Set()) {
 	const variables: IBootstrapVariables = {
 		_canvas: createVariable('c'),
 		_ctx: createVariable('b'),
@@ -37,26 +161,35 @@ export function createTemplate(sourceText: string) {
 	};
 	const onloadTemplate = createJsTemplate(
 		"_ctx=_canvas.getContext`2d`;for(_negative=_evaledString='';_zero=_ctx.getImageData(159,0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(e)",
-		variables
+		variables,
+		new Set(),
 	);
 	const payloadTemplate = createJsTemplate(
 		sourceText,
-		variables
+		variables,
+		keepNames
 	);
 
+	const pngFilter = new Template([ new Set([0, 2]) ], []);
 	const [htmlHead, htmlMid, htmlTail] = "<canvas/id=🎨><img/onload=🏭 src=#>".split(/[🎨🏭]/u).map(createHtmlTemplate);
 
-	return mergeTemplates(
+	const mergedTemplate = Template.merge(
+		pngFilter,
 		htmlHead,
-		{ contents: [variables._canvas], exclusiveGroups: []},
+		new Template([variables._canvas], []),
 		htmlMid,
 		onloadTemplate,
 		htmlTail,
 		payloadTemplate
-	);
+	)
+
+	return {
+		template: mergedTemplate,
+		dataStartOffet: mergedTemplate.contents.length - payloadTemplate.contents.length,
+	};
 }
 
-function createHtmlTemplate(template: string): ITemplate {
+function createHtmlTemplate(template: string): Template {
 	const templateContents = [] as ITemplatePart[];
 	for (const ch of template) {
 		if (ch === '/') {
@@ -69,13 +202,10 @@ function createHtmlTemplate(template: string): ITemplate {
 		}
 		templateContents.push(recase(ch));
 	}
-	return {
-		contents: templateContents,
-		exclusiveGroups: [],
-	}
+	return new Template(templateContents, []);
 }
 
-function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVariables): ITemplate {
+function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVariables, keepNames: ReadonlySet<string>): Template {
 	const collectedIds: Map<number, { name: string, end: number }> = new Map();
 	const collectedQuotes: Map<number, { end: number }> = new Map();
 	const collectedMagic: Map<number, { name: MagicFunctionName, end: number }> = new Map();
@@ -104,7 +234,7 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 		}
 		if (typescript.isIdentifier(node)) {
 			const name = node.text;
-			if (shouldRenameIdentifier(name, bootstrapVariables, identifierIsPropertyName(node))) {
+			if (!keepNames.has(name) && shouldRenameIdentifier(name, bootstrapVariables, identifierIsPropertyName(node))) {
 				const start = node.getStart(sourceFile);
 				const end = node.getEnd();
 				collectedIds.set(start, { name, end });
@@ -159,18 +289,7 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 		templateContents.push(sourceText.charCodeAt(index));
 	}
 
-
-	return {
-		contents: templateContents,
-		exclusiveGroups: [new Set(identifiersByName.values())],
-	}
-}
-
-function mergeTemplates(...templates: ITemplate[]): ITemplate {
-	return {
-		contents: ([] as ITemplatePart[]).concat(...templates.map(t => t.contents)),
-		exclusiveGroups: ([] as ReadonlySet<ITemplatePart>[]).concat(...templates.map(t => t.exclusiveGroups)),
-	};
+	return new Template(templateContents, [new Set(identifiersByName.values())]);
 }
 
 function shouldRenameIdentifier(name: string, bootstrapVariables: IBootstrapVariables, isProp: boolean): boolean {
@@ -256,26 +375,4 @@ function createAnyDigit(): ITemplateVaryingPart {
 	return new Set(
 		Array.from('0123456789', ch => ch.charCodeAt(0))
 	);
-}
-
-export function dumpTemplate(template: readonly ITemplatePart[]): string {
-	let rv = '';
-	const fmt = (charCode: number): string => {
-		if (charCode === 0x0A || charCode === 0x0D) {
-			return '⮠';
-		}
-		if (charCode === 0x09) {
-			return '⇥';
-		}
-		return String.fromCharCode(charCode);
-	}
-
-	for (const item of template) {
-		if (typeof item === 'number') {
-			rv += fmt(item);
-		} else {
-			rv += '⟦' + Array.from(item, fmt).join('') + '⟧';
-		}
-	}
-	return rv;
 }

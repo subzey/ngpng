@@ -3,7 +3,120 @@ const MagicFunctions = {
     _anyDigit: createAnyDigit,
     _anyPositiveDigit: createAnyPositiveDigit,
 };
-export function createTemplate(sourceText) {
+class Template {
+    constructor(contents, exclusiveGroups) {
+        this.exclusiveGroups = exclusiveGroups;
+        this._exclusivesMap = this._createExclusivesFromArray(exclusiveGroups);
+        this.contents = contents;
+    }
+    static merge(...templates) {
+        return new this([].concat(...templates.map(t => t.contents)), [].concat(...templates.map(t => t.exclusiveGroups)));
+    }
+    get(assumption, index) {
+        if (index < 0 || index >= this.contents.length) {
+            return undefined;
+        }
+        const value = this.contents[index];
+        if (typeof value !== 'number' && assumption.has(value)) {
+            return assumption.get(value);
+        }
+        return value;
+    }
+    isMatching(assumption, indexA, indexB) {
+        if (indexA < 0 || indexA >= this.contents.length ||
+            indexB < 0 || indexB >= this.contents.length) {
+            // Out of bound values never matches
+            return false;
+        }
+        const partA = this.contents[indexA];
+        const partB = this.contents[indexB];
+        if (typeof partA !== 'number' && typeof partB !== 'number') {
+            const exclusiveSet = this._exclusivesMap.get(partA);
+            if (exclusiveSet !== undefined && exclusiveSet.has(partB)) {
+                // Sets from the same exclusive group cannot match
+                // regardless of the assumption
+                return false;
+            }
+        }
+        const valueA = (typeof partA !== 'number' && assumption.get(partA)) || partA;
+        const valueB = (typeof partB !== 'number' && assumption.get(partB)) || partB;
+        if (typeof valueA === 'number') {
+            if (typeof valueB === 'number') {
+                return valueA === valueB;
+            }
+            return valueB.has(valueA);
+        }
+        if (typeof valueB === 'number') {
+            return valueA.has(valueB);
+        }
+        const smallerSet = valueA.size < valueB.size ? valueA : valueB;
+        const biggerSet = valueA === smallerSet ? valueB : valueA;
+        for (const v of smallerSet) {
+            if (biggerSet.has(v)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    dump(from = 0, to = Infinity) {
+        let rv = '';
+        const fmt = (charCode) => {
+            if (charCode === 0x0A || charCode === 0x0D) {
+                return '⮠';
+            }
+            if (charCode === 0x09) {
+                return '⇥';
+            }
+            return String.fromCharCode(charCode);
+        };
+        let lastColorPhase = 0;
+        const colorBySet = new Map();
+        const start = Math.max(Math.ceil(from), 0);
+        const end = Math.min(to, this.contents.length);
+        for (let i = start; i < end; i++) {
+            const item = this.contents[i];
+            if (typeof item === 'number') {
+                rv += fmt(item);
+            }
+            else {
+                let ansiColor = colorBySet.get(item);
+                if (ansiColor === undefined) {
+                    ansiColor = [
+                        Math.round((Math.cos(lastColorPhase + 0 * Math.PI * 2 / 3) + 1) * 127.5),
+                        Math.round((Math.cos(lastColorPhase + 1 * Math.PI * 2 / 3) + 1) * 127.5),
+                        Math.round((Math.cos(lastColorPhase + 2 * Math.PI * 2 / 3) + 1) * 127.5),
+                    ].join(';');
+                    lastColorPhase += Math.PI * 2 * (2 / (1 + Math.sqrt(5)));
+                    colorBySet.set(item, ansiColor);
+                }
+                rv += `\u001b[30m\u001b[48;2;${ansiColor}m` + Array.from(item, fmt).join('') + '\u001b[39;49m';
+            }
+        }
+        return rv;
+    }
+    _createExclusivesFromArray(exclusiveGroups) {
+        const exclusives = new Map();
+        for (const exclusiveGroup of exclusiveGroups) {
+            for (const part of exclusiveGroup) {
+                if (!exclusives.has(part)) {
+                    exclusives.set(part, new Set());
+                }
+                for (const otherPart of exclusiveGroup) {
+                    if (part === otherPart) {
+                        continue;
+                    }
+                    if (!exclusives.has(otherPart)) {
+                        exclusives.set(otherPart, new Set());
+                    }
+                    exclusives.get(part).add(otherPart);
+                    exclusives.get(otherPart).add(part);
+                }
+            }
+        }
+        return exclusives;
+    }
+}
+export function createTemplate(sourceText, keepNames = new Set()) {
     const variables = {
         _canvas: createVariable('c'),
         _ctx: createVariable('b'),
@@ -11,10 +124,15 @@ export function createTemplate(sourceText) {
         _evaledString: createVariable('e'),
         _negative: createVariable('p'),
     };
-    const onloadTemplate = createJsTemplate("_ctx=_canvas.getContext`2d`;for(_negative=_evaledString='';_zero=_ctx.getImageData(159,0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(e)", variables);
-    const payloadTemplate = createJsTemplate(sourceText, variables);
+    const onloadTemplate = createJsTemplate("_ctx=_canvas.getContext`2d`;for(_negative=_evaledString='';_zero=_ctx.getImageData(159,0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(e)", variables, new Set());
+    const payloadTemplate = createJsTemplate(sourceText, variables, keepNames);
+    const pngFilter = new Template([new Set([0, 2])], []);
     const [htmlHead, htmlMid, htmlTail] = "<canvas/id=🎨><img/onload=🏭 src=#>".split(/[🎨🏭]/u).map(createHtmlTemplate);
-    return mergeTemplates(htmlHead, { contents: [variables._canvas], exclusiveGroups: [] }, htmlMid, onloadTemplate, htmlTail, payloadTemplate);
+    const mergedTemplate = Template.merge(pngFilter, htmlHead, new Template([variables._canvas], []), htmlMid, onloadTemplate, htmlTail, payloadTemplate);
+    return {
+        template: mergedTemplate,
+        dataStartOffet: mergedTemplate.contents.length - payloadTemplate.contents.length,
+    };
 }
 function createHtmlTemplate(template) {
     const templateContents = [];
@@ -29,12 +147,9 @@ function createHtmlTemplate(template) {
         }
         templateContents.push(recase(ch));
     }
-    return {
-        contents: templateContents,
-        exclusiveGroups: [],
-    };
+    return new Template(templateContents, []);
 }
-function createJsTemplate(sourceText, bootstrapVariables) {
+function createJsTemplate(sourceText, bootstrapVariables, keepNames) {
     const collectedIds = new Map();
     const collectedQuotes = new Map();
     const collectedMagic = new Map();
@@ -55,7 +170,7 @@ function createJsTemplate(sourceText, bootstrapVariables) {
         }
         if (typescript.isIdentifier(node)) {
             const name = node.text;
-            if (shouldRenameIdentifier(name, bootstrapVariables, identifierIsPropertyName(node))) {
+            if (!keepNames.has(name) && shouldRenameIdentifier(name, bootstrapVariables, identifierIsPropertyName(node))) {
                 const start = node.getStart(sourceFile);
                 const end = node.getEnd();
                 collectedIds.set(start, { name, end });
@@ -106,16 +221,7 @@ function createJsTemplate(sourceText, bootstrapVariables) {
         }
         templateContents.push(sourceText.charCodeAt(index));
     }
-    return {
-        contents: templateContents,
-        exclusiveGroups: [new Set(identifiersByName.values())],
-    };
-}
-function mergeTemplates(...templates) {
-    return {
-        contents: [].concat(...templates.map(t => t.contents)),
-        exclusiveGroups: [].concat(...templates.map(t => t.exclusiveGroups)),
-    };
+    return new Template(templateContents, [new Set(identifiersByName.values())]);
 }
 function shouldRenameIdentifier(name, bootstrapVariables, isProp) {
     if (name.startsWith('_')) {
@@ -179,25 +285,4 @@ function createAnyPositiveDigit() {
 }
 function createAnyDigit() {
     return new Set(Array.from('0123456789', ch => ch.charCodeAt(0)));
-}
-export function dumpTemplate(template) {
-    let rv = '';
-    const fmt = (charCode) => {
-        if (charCode === 0x0A || charCode === 0x0D) {
-            return '⮠';
-        }
-        if (charCode === 0x09) {
-            return '⇥';
-        }
-        return String.fromCharCode(charCode);
-    };
-    for (const item of template) {
-        if (typeof item === 'number') {
-            rv += fmt(item);
-        }
-        else {
-            rv += '⟦' + Array.from(item, fmt).join('') + '⟧';
-        }
-    }
-    return rv;
 }

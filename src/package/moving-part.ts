@@ -1,8 +1,4 @@
-/** A set of possible byte values */
-export type ITemplateVaryingPart = ReadonlySet<number>;
-
-/** A set of possible byte values or a concrete numeric value */
-export type ITemplatePart = ITemplateVaryingPart | number;
+import type { ITemplatePart, ITemplateVaryingPart } from './interface';
 
 export function intersect(a: ITemplatePart, b: ITemplatePart): ITemplatePart | undefined {
 	if (typeof a === 'number') {

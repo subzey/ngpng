@@ -1,4 +1,4 @@
-import { ITemplatePart } from './moving-part.js';
+import type { IAssumption, ITemplate } from './interface';
 /**
  * Tries to infer some values by matching the {@link template} with itself.
  * ```text
@@ -9,7 +9,5 @@ import { ITemplatePart } from './moving-part.js';
  *         └─╚═╧═╧═╝─┴─┴─┴─┴─┘
  *            ? = C
  * ```
- * @param template
- * @param dataStartOffset
  */
-export declare function inferFromBackrefs(template: ArrayLike<ITemplatePart>, dataStartOffset?: number): Generator<never, void, unknown>;
+export declare function inferFromBackrefs(template: ITemplate, assumption: IAssumption, dataStartOffset?: number): void;

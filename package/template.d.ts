@@ -1,14 +1,17 @@
-import { ITemplatePart } from "./moving-part";
-interface ITemplate {
-    /** Numbers or sets of numbers to pick from */
+import type { ITemplatePart, ITemplateVaryingPart, ITemplate, IAssumption } from "./interface";
+declare class Template implements ITemplate {
     readonly contents: readonly ITemplatePart[];
-    /**
-     * All the sets inside a group should end up with the different values.
-     * Those are typically the variable names. `[ Set{ a, b }, Set{ a, b } ]`
-     * may become `[a, b]` or `[b, a]`, but not `[a, a]` or `[b, b]`
-     */
-    readonly exclusiveGroups: readonly ReadonlySet<ITemplatePart>[];
+    readonly exclusiveGroups: readonly (ReadonlySet<ITemplateVaryingPart>)[];
+    protected readonly _exclusivesMap: ReadonlyMap<ITemplateVaryingPart, ReadonlySet<ITemplateVaryingPart>>;
+    constructor(contents: readonly ITemplatePart[], exclusiveGroups: readonly (ReadonlySet<ITemplateVaryingPart>)[]);
+    static merge(...templates: readonly ITemplate[]): Template;
+    get(assumption: IAssumption, index: number): ITemplatePart | undefined;
+    isMatching(assumption: IAssumption, indexA: number, indexB: number): boolean;
+    dump(from?: number, to?: number): string;
+    private _createExclusivesFromArray;
 }
-export declare function createTemplate(sourceText: string): ITemplate;
-export declare function dumpTemplate(template: readonly ITemplatePart[]): string;
+export declare function createTemplate(sourceText: string, keepNames?: ReadonlySet<string>): {
+    template: Template;
+    dataStartOffet: number;
+};
 export {};
