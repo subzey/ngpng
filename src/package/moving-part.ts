@@ -1,34 +1,16 @@
-import type { ITemplatePart, ITemplateVaryingPart } from './interface';
+import type { ITemplatePart, ITemplateVaryingPart } from './template.js';
 
 export function intersect(a: ITemplatePart, b: ITemplatePart): ITemplatePart | undefined {
 	if (typeof a === 'number') {
 		if (typeof b === 'number') {
 			return a === b ? a : undefined;
 		}
-		return intersectPrimitive(a, b);
+		return b.has(a) ? a : undefined;
 	}
 	if (typeof b === 'number') {
-		return intersectPrimitive(b, a);
+		return a.has(b) ? b : undefined;
 	}
 	return intersectSets(a, b);
-}
-
-function intersectPrimitive(a: number, b: ITemplateVaryingPart): ITemplatePart | undefined {
-	if (!b.has(a)) {
-		return undefined;
-	}
-	if (b.size === 1) {
-		return a;
-	}
-	let lastValue = 0;
-	let newSet: Set<number> = new Set();
-	for (lastValue of b) {
-		newSet.add(lastValue);
-	}
-	if (newSet.size === 1) {
-		return lastValue;
-	}
-	return newSet;
 }
 
 function intersectSets(a: ITemplateVaryingPart, b: ITemplateVaryingPart): ITemplatePart | undefined {

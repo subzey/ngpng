@@ -1,4 +1,4 @@
-import type { IAssumption, ITemplate } from './interface';
+import type { ITemplate } from './template.js';
 /**
  * Tries to infer some values by matching the {@link template} with itself.
  * ```text
@@ -10,7 +10,11 @@ import type { IAssumption, ITemplate } from './interface';
  *            ? = C
  * ```
  */
-export declare function inferFromBackrefs(template: ITemplate, assumption: IAssumption, dataStartOffset?: number): {
-    assumption: IAssumption;
-    usedOffsets: Set<number>;
+export declare function inferFromBackrefs({ template, dataStartOffset }: {
+    template: ITemplate;
+    dataStartOffset: number;
+}): {
+    template: ITemplate;
+    dataStartOffset: number;
+    usedBackrefIndices: Set<number>;
 };

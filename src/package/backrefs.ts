@@ -1,4 +1,5 @@
-import type { IAssumption, ITemplate, ITemplatePart, ITemplateVaryingPart } from './interface';
+import { intersect } from './moving-part.js';
+import type { ITemplate } from './template.js'
 
 interface IFoundBackref {
 	referencedOffset: number;
@@ -17,13 +18,16 @@ interface IFoundBackref {
  *            ? = C
  * ```  
  */
-export function inferFromBackrefs(
-	template: ITemplate,
-	assumption: IAssumption,
+export function inferFromBackrefs({
+	template,
 	dataStartOffset = 0
-) {
-	const usedOffsets: Set<number> = new Set();
-	const candidates = Array.from(backrefCandidates(template, assumption, dataStartOffset)).sort((a, b) => {
+}: {
+	template: ITemplate;
+	dataStartOffset: number;
+}) {
+	console.log(dataStartOffset);
+	const usedBackrefIndices: Set<number> = new Set();
+	const candidates = Array.from(backrefCandidates(template, dataStartOffset)).sort((a, b) => {
 		return (
 			// Prefer longer backrefs
 			b.length - a.length
@@ -33,75 +37,64 @@ export function inferFromBackrefs(
 		);
 	});
 	for (const backref of candidates) {
-		const newAssumption = tryApplyBackref(backref, assumption, template, usedOffsets);
-		if (newAssumption === null) {
-			continue;
+		console.log(backref);
+		try {
+			template = applyBackref(backref, template, usedBackrefIndices);
+			for (let i = 0; i < backref.length; i++) {
+				usedBackrefIndices.add(backref.usedOffset + i);
+			}
+			console.log(`Accepted ${backref.referencedOffset} -> ${backref.usedOffset}: ${backref.length}`);
+			console.log(template.dump({
+				from: backref.referencedOffset,
+				to: backref.referencedOffset + backref.length,
+			}));
+			console.log(template.dump({
+				from: backref.usedOffset,
+				to: backref.usedOffset + backref.length,
+			}));
+		} catch (e) {
+			console.log(e);
+			// Nothing;
 		}
-		debugger;
-		assumption = newAssumption;
-		for (let i = 0; i < backref.length; i++) {
-			usedOffsets.add(backref.usedOffset + i)
-		}
-	
-		console.log(`Accepted ${backref.referencedOffset} -> ${backref.usedOffset}: ${backref.length}`);
-		console.log((template as any).dump({
-			from: backref.referencedOffset,
-			to: backref.referencedOffset + backref.length,
-			assumption,
-		}));
-		console.log((template as any).dump({
-			from: backref.usedOffset,
-			to: backref.usedOffset + backref.length,
-			assumption,
-		}));
 	}
 	return {
-		assumption,
-		usedOffsets,
-	}
+		template,
+		dataStartOffset,
+		usedBackrefIndices,
+	};
 }
 
 
-function tryApplyBackref({usedOffset, referencedOffset, length} : IFoundBackref, assumption: IAssumption, template: ITemplate, usedOffsets: ReadonlySet<number>): IAssumption | null {
+function applyBackref({usedOffset, referencedOffset, length } : IFoundBackref, template: ITemplate, usedBackrefIndices: ReadonlySet<number>): ITemplate {
 	for (let i = 0; i < length; i++) {
-		if (usedOffsets.has(usedOffset + i)) {
-			// One of these offsets is already using a (better) reference
-			return null;
+		if (usedBackrefIndices.has(usedOffset + i)) {
+			throw new Error('One of the offsets is already using a (better) reference');
 		}
 	}
 	for (let i = 0; i < length; i++) {
-		const referencedValue = template.get(assumption, referencedOffset + i);
-		if (referencedValue === undefined) {
-			return null;
+		const referencedPart = template.contents[referencedOffset + i];
+		const usedPart = template.contents[usedOffset + i];
+		if (referencedPart === usedPart) {
+			continue;
 		}
-		const usedValue = template.get(assumption, usedOffset + i);
-		if (usedValue === undefined) {
-			return null;
+		const intersection = intersect(referencedPart, usedPart);
+		if (intersection === undefined) {
+			throw new Error('Parts are no longer intersecting');
 		}
-		{
-			const newAssumption = template.tryNarrowAssumption(assumption, referencedOffset + i, usedValue);
-			if (newAssumption === null) {
-				return null;
-			}
-			assumption = newAssumption;
+		if (typeof referencedPart !== 'number') {
+			template = template.replacePart(referencedPart, intersection);
 		}
-		{
-			const newAssumption = template.tryNarrowAssumption(assumption, usedOffset + i, referencedValue);
-			if (newAssumption === null) {
-				return null;
-			}
-			assumption = newAssumption;
+		if (typeof usedPart !== 'number') {
+			template = template.replacePart(usedPart, intersection);
 		}
 	}
-	return assumption;
+	return template;
 }
 
 function * backrefCandidates(
 	template: ITemplate,
-	assumption: IAssumption,
 	dataStartOffset = 0
 ): IterableIterator<IFoundBackref> {
-	debugger;
 	const templateMax = template.contents.length - 1;
 	for (let stride = template.contents.length - 3; stride > 0; stride--) {
 		let length = 0;
@@ -110,7 +103,7 @@ function * backrefCandidates(
 			referencedOffset >= 0 && usedOffset >= dataStartOffset;
 			referencedOffset--, usedOffset--
 		) {
-			if (!template.isMatching(assumption, referencedOffset, usedOffset)) {
+			if (!template.isMatching(referencedOffset, usedOffset)) {
 				length = 0;
 				continue;
 			}
