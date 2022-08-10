@@ -18,11 +18,65 @@ export function inferFromBackrefs(template, assumption, dataStartOffset = 0) {
         // Prefer shorter distances
         (a.usedOffset - a.referencedOffset) - (b.usedOffset - b.referencedOffset));
     });
-    for (const candidate of candidates) {
-        console.log(candidate);
-        console.log(template.dump(candidate.referencedOffset, candidate.referencedOffset + candidate.length));
-        console.log(template.dump(candidate.usedOffset, candidate.usedOffset + candidate.length));
+    for (const backref of candidates) {
+        const newAssumption = tryApplyBackref(backref, assumption, template, usedOffsets);
+        if (newAssumption === null) {
+            continue;
+        }
+        debugger;
+        assumption = newAssumption;
+        for (let i = 0; i < backref.length; i++) {
+            usedOffsets.add(backref.usedOffset + i);
+        }
+        console.log(`Accepted ${backref.referencedOffset} -> ${backref.usedOffset}: ${backref.length}`);
+        console.log(template.dump({
+            from: backref.referencedOffset,
+            to: backref.referencedOffset + backref.length,
+            assumption,
+        }));
+        console.log(template.dump({
+            from: backref.usedOffset,
+            to: backref.usedOffset + backref.length,
+            assumption,
+        }));
     }
+    return {
+        assumption,
+        usedOffsets,
+    };
+}
+function tryApplyBackref({ usedOffset, referencedOffset, length }, assumption, template, usedOffsets) {
+    for (let i = 0; i < length; i++) {
+        if (usedOffsets.has(usedOffset + i)) {
+            // One of these offsets is already using a (better) reference
+            return null;
+        }
+    }
+    for (let i = 0; i < length; i++) {
+        const referencedValue = template.get(assumption, referencedOffset + i);
+        if (referencedValue === undefined) {
+            return null;
+        }
+        const usedValue = template.get(assumption, usedOffset + i);
+        if (usedValue === undefined) {
+            return null;
+        }
+        {
+            const newAssumption = template.tryNarrowAssumption(assumption, referencedOffset + i, usedValue);
+            if (newAssumption === null) {
+                return null;
+            }
+            assumption = newAssumption;
+        }
+        {
+            const newAssumption = template.tryNarrowAssumption(assumption, usedOffset + i, referencedValue);
+            if (newAssumption === null) {
+                return null;
+            }
+            assumption = newAssumption;
+        }
+    }
+    return assumption;
 }
 function* backrefCandidates(template, assumption, dataStartOffset = 0) {
     debugger;

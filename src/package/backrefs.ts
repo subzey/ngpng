@@ -1,6 +1,6 @@
-import type { IAssumption, ITemplate } from './interface';
+import type { IAssumption, ITemplate, ITemplatePart, ITemplateVaryingPart } from './interface';
 
-interface FoundBackref {
+interface IFoundBackref {
 	referencedOffset: number;
 	usedOffset: number;
 	length: number;
@@ -32,18 +32,75 @@ export function inferFromBackrefs(
 			(a.usedOffset - a.referencedOffset) - (b.usedOffset - b.referencedOffset)
 		);
 	});
-	for (const candidate of candidates) {
-		console.log(candidate);
-		console.log((template as any).dump(candidate.referencedOffset, candidate.referencedOffset + candidate.length));
-		console.log((template as any).dump(candidate.usedOffset, candidate.usedOffset + candidate.length));
+	for (const backref of candidates) {
+		const newAssumption = tryApplyBackref(backref, assumption, template, usedOffsets);
+		if (newAssumption === null) {
+			continue;
+		}
+		debugger;
+		assumption = newAssumption;
+		for (let i = 0; i < backref.length; i++) {
+			usedOffsets.add(backref.usedOffset + i)
+		}
+	
+		console.log(`Accepted ${backref.referencedOffset} -> ${backref.usedOffset}: ${backref.length}`);
+		console.log((template as any).dump({
+			from: backref.referencedOffset,
+			to: backref.referencedOffset + backref.length,
+			assumption,
+		}));
+		console.log((template as any).dump({
+			from: backref.usedOffset,
+			to: backref.usedOffset + backref.length,
+			assumption,
+		}));
 	}
+	return {
+		assumption,
+		usedOffsets,
+	}
+}
+
+
+function tryApplyBackref({usedOffset, referencedOffset, length} : IFoundBackref, assumption: IAssumption, template: ITemplate, usedOffsets: ReadonlySet<number>): IAssumption | null {
+	for (let i = 0; i < length; i++) {
+		if (usedOffsets.has(usedOffset + i)) {
+			// One of these offsets is already using a (better) reference
+			return null;
+		}
+	}
+	for (let i = 0; i < length; i++) {
+		const referencedValue = template.get(assumption, referencedOffset + i);
+		if (referencedValue === undefined) {
+			return null;
+		}
+		const usedValue = template.get(assumption, usedOffset + i);
+		if (usedValue === undefined) {
+			return null;
+		}
+		{
+			const newAssumption = template.tryNarrowAssumption(assumption, referencedOffset + i, usedValue);
+			if (newAssumption === null) {
+				return null;
+			}
+			assumption = newAssumption;
+		}
+		{
+			const newAssumption = template.tryNarrowAssumption(assumption, usedOffset + i, referencedValue);
+			if (newAssumption === null) {
+				return null;
+			}
+			assumption = newAssumption;
+		}
+	}
+	return assumption;
 }
 
 function * backrefCandidates(
 	template: ITemplate,
 	assumption: IAssumption,
 	dataStartOffset = 0
-): IterableIterator<FoundBackref> {
+): IterableIterator<IFoundBackref> {
 	debugger;
 	const templateMax = template.contents.length - 1;
 	for (let stride = template.contents.length - 3; stride > 0; stride--) {

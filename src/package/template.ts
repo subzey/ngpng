@@ -1,4 +1,5 @@
 import type { ITemplatePart, ITemplateVaryingPart, ITemplate, IAssumption } from "./interface";
+import { intersect } from './moving-part.js';
 
 import typescript from 'typescript';
 
@@ -31,7 +32,7 @@ class Template implements ITemplate {
 	static merge(...templates: readonly ITemplate[]): Template {
 		return new this(
 			([] as ITemplatePart[]).concat(...templates.map(t => t.contents)),
-			([] as ReadonlySet<ITemplateVaryingPart>[]).concat(...templates.map(t => t.exclusiveGroups)),
+			([] as ReadonlySet<ITemplateVaryingPart>[]).concat(...templates.map(t => t.exclusiveGroups).filter(a => a.length > 0)),
 		);
 	}
 
@@ -90,7 +91,77 @@ class Template implements ITemplate {
 		return false;
 	}
 
-	public dump(from=0, to=Infinity) {
+	public tryNarrowAssumption(prevAssumption: IAssumption, index: number, newValue: ITemplatePart): IAssumption | null {
+		const currentValue = this.get(prevAssumption, index);
+		if (currentValue === undefined) {
+			// No such index: Assumption is invalid
+			return null;
+		}
+		const intersection = intersect(newValue, currentValue);
+		if (intersection === undefined) {
+			// There's nothing in common: Assumption is invalid
+			return null;
+		}
+		const templatePart = this.contents[index];
+		if (typeof templatePart === 'number') {
+			// That's a literal value. Assumption is valid, but no new information is provided
+			return prevAssumption;
+		}
+		const newAssumption = new Map(prevAssumption);
+		newAssumption.set(templatePart, intersection);
+		const exclusiveSet = this._exclusivesMap.get(templatePart);
+		if (exclusiveSet === undefined) {
+			// Assumption is valid, no constraints to check
+			return newAssumption;
+		}
+
+		const possibleValues: Set<number> = new Set();
+		const affectedParts: Set<ITemplateVaryingPart> = new Set();
+
+		for (let i = 0; i < this.contents.length; i++) {
+			const otherPart = this.contents[i];
+			if (typeof otherPart === 'number') {
+				continue;
+			}
+			if (otherPart !== templatePart && exclusiveSet.has(otherPart)) {
+				// Not of interest
+				continue;
+			}
+			if (affectedParts.has(otherPart)) {
+				// We've already checked this
+				continue;
+			}
+			affectedParts.add(otherPart);
+			const value = this.get(newAssumption, i);
+			if (value === undefined) {
+				return null;
+			}
+			if (typeof value === 'number') {
+				possibleValues.add(value);
+			} else {
+				for (const v of value) {
+					possibleValues.add(v);
+				}
+			}
+		}
+
+		if (affectedParts.size > possibleValues.size) {
+			// There's not enough values to satisfy constaints
+			return null;
+		}
+
+		return newAssumption;
+	}
+
+	public dump({
+		from = 0,
+		to = Infinity,
+		assumption = new Map()
+	}: {
+		from?: number;
+		to?: number;
+		assumption?: IAssumption;
+	} = {}) {
 		let rv = '';
 		const fmt = (charCode: number): string => {
 			if (charCode === 0x0A || charCode === 0x0D) {
@@ -103,14 +174,15 @@ class Template implements ITemplate {
 		}
 	
 		let lastColorPhase = 0;
-		const colorBySet: Map<ReadonlySet<unknown>, string> = new Map();
+		const colorBySet: Map<ITemplatePart, string> = new Map();
 		const start = Math.max(Math.ceil(from), 0);
 		const end = Math.min(to, this.contents.length);
 
 		for (let i = start; i < end; i++) {
 			const item = this.contents[i];
-			if (typeof item === 'number') {
-				rv += fmt(item);
+			const value = this.get(assumption, i)!;
+			if (typeof value === 'number') {
+				rv += fmt(value);
 			} else {
 				let ansiColor = colorBySet.get(item);
 				if (ansiColor === undefined) {
@@ -122,7 +194,7 @@ class Template implements ITemplate {
 					lastColorPhase += Math.PI * 2 * (2 / (1 + Math.sqrt(5)));
 					colorBySet.set(item, ansiColor);
 				}
-				rv += `\u001b[30m\u001b[48;2;${ansiColor}m` + Array.from(item, fmt).join('') + '\u001b[39;49m';
+				rv += `\u001b[30m\u001b[48;2;${ansiColor}m` + Array.from(value, fmt).join('') + '\u001b[39;49m';
 			}
 		}
 		return rv;

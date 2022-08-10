@@ -14,4 +14,5 @@ export interface ITemplate {
     readonly exclusiveGroups: readonly (ReadonlySet<ITemplateVaryingPart>)[];
     get(assumption: IAssumption, index: number): ITemplatePart | undefined;
     isMatching(assumption: IAssumption, indexA: number, indexB: number): boolean;
+    tryNarrowAssumption(prevAssumption: IAssumption, index: number, newValue: ITemplatePart): IAssumption | null;
 }

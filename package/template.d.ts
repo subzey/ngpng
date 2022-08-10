@@ -7,7 +7,12 @@ declare class Template implements ITemplate {
     static merge(...templates: readonly ITemplate[]): Template;
     get(assumption: IAssumption, index: number): ITemplatePart | undefined;
     isMatching(assumption: IAssumption, indexA: number, indexB: number): boolean;
-    dump(from?: number, to?: number): string;
+    tryNarrowAssumption(prevAssumption: IAssumption, index: number, newValue: ITemplatePart): IAssumption | null;
+    dump({ from, to, assumption }?: {
+        from?: number;
+        to?: number;
+        assumption?: IAssumption;
+    }): string;
     private _createExclusivesFromArray;
 }
 export declare function createTemplate(sourceText: string, keepNames?: ReadonlySet<string>): {

@@ -10,4 +10,7 @@ import type { IAssumption, ITemplate } from './interface';
  *            ? = C
  * ```
  */
-export declare function inferFromBackrefs(template: ITemplate, assumption: IAssumption, dataStartOffset?: number): void;
+export declare function inferFromBackrefs(template: ITemplate, assumption: IAssumption, dataStartOffset?: number): {
+    assumption: IAssumption;
+    usedOffsets: Set<number>;
+};

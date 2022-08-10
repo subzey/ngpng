@@ -12,4 +12,8 @@ const { template, dataStartOffet } = createTemplate(
 	pl,
 	new Set(['x', 'y', 't'])
 );
-inferFromBackrefs(template, new Map(), dataStartOffet);
+console.log(template.dump());
+const { assumption } = inferFromBackrefs(template, new Map(), dataStartOffet);
+// console.log('\n');
+// console.log(assumption);
+// console.log(template.dump({assumption}));
