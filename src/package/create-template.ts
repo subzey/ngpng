@@ -20,11 +20,11 @@ type MagicFunctionName = keyof typeof MagicFunctions;
 
 export function * createTemplate(jsSource: string, keepNames: ReadonlySet<string> = new Set()): IterableIterator<Pick<ProcessingState, 'template' | 'dataStartOffset' | 'shouldCheckHtml'>> {
 	const variables: IBootstrapVariables = {
-		_canvas: createVariable('c'),
-		_ctx: createVariable('b'),
-		_zero: createVariable('t'),
-		_evaledString: createVariable('e'),
-		_negative: createVariable('p'),
+		_canvas: createVariable('c', new Set('xy')),
+		_ctx: createVariable('b', new Set('xy')),
+		_zero: createVariable('t', new Set('xy')),
+		_evaledString: createVariable('e', new Set('xy')),
+		_negative: createVariable('p', new Set('xy')),
 	};
 
 	const payloadTemplate = createJsTemplate(
@@ -43,9 +43,9 @@ export function * createTemplate(jsSource: string, keepNames: ReadonlySet<string
 				? "_negative=_evaledString=''"
 				: "_evaledString=_negative=''"
 			);
-			const offset = (trimWaka ? 159 : 158);
+			const offset = (trimWaka ? 158 : 159);
 			const onloadTemplate = createJsTemplate(
-				"_ctx=_canvas.getContext`2d`;for(" + init + ";_zero=_ctx.getImageData(" + offset + ",0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(e)",
+				"_ctx=_canvas.getContext`2d`;for(" + init + ";_zero=_ctx.getImageData(" + offset + ",0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(_evaledString)",
 				variables,
 				new Set(),
 			);
