@@ -19,12 +19,18 @@ const MagicFunctions = {
 type MagicFunctionName = keyof typeof MagicFunctions;
 
 export function * createTemplate(jsSource: string, keepNames: ReadonlySet<string> = new Set()): IterableIterator<Pick<ProcessingState, 'template' | 'dataStartOffset' | 'shouldCheckHtml'>> {
+	const avoidTemplateIds = new Set([
+		// https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/x
+		'x', 'y',
+		...keepNames
+	]);
+	
 	const variables: IBootstrapVariables = {
-		_canvas: createVariable('c', new Set('xy')),
-		_ctx: createVariable('b', new Set('xy')),
-		_zero: createVariable('t', new Set('xy')),
-		_evaledString: createVariable('e', new Set('xy')),
-		_negative: createVariable('p', new Set('xy')),
+		_canvas: createBootstrapVariable('c', avoidTemplateIds),
+		_ctx: createBootstrapVariable('b', avoidTemplateIds),
+		_zero: createBootstrapVariable('t', avoidTemplateIds),
+		_evaledString: createBootstrapVariable('e', avoidTemplateIds),
+		_negative: createBootstrapVariable('p', avoidTemplateIds),
 	};
 
 	const payloadTemplate = createJsTemplate(
@@ -237,6 +243,19 @@ function createVariable(preferredName: string, avoid?: Set<string>): ITemplateVa
 	}
 	return set;
 }
+
+// Non-ASCII names cannot be used in a bootstrap
+function createBootstrapVariable(preferredName: string, avoid?: Set<string>): ITemplateVaryingPart {
+	const set: Set<number> = new Set();
+	for (const ch of preferredName[0] + 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$') {
+		if (avoid !== undefined && avoid.has(ch)) {
+			continue;
+		}
+		set.add(ch.charCodeAt(0));
+	}
+	return set;
+}
+
 
 function createHtmlAttributeSeparator(): ITemplateVaryingPart {
 	return new Set(
