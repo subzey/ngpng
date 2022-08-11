@@ -19,7 +19,7 @@ interface IFoundBackref {
  *            ? = C
  * ```  
  */
-export function inferFromBackrefs(processingState: Pick<ProcessingState, 'template' | 'dataStartOffset'>): Pick<ProcessingState, 'template' | 'dataStartOffset' | 'usedBackrefIndices'> {
+export function inferFromBackrefs(processingState: Pick<ProcessingState, 'template' | 'dataStartOffset'>): Pick<ProcessingState, 'template' | 'usedBackrefIndices'> {
 	const { template, dataStartOffset } = processingState;
 	const usedBackrefIndices: Set<number> = new Set();
 	const candidates = Array.from(backrefCandidates(template, dataStartOffset)).sort((a, b) => {
@@ -57,7 +57,6 @@ export function inferFromBackrefs(processingState: Pick<ProcessingState, 'templa
 	}
 	return {
 		template: newTemplate,
-		dataStartOffset,
 		usedBackrefIndices,
 	};
 }

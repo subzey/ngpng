@@ -18,7 +18,7 @@ const MagicFunctions = {
 
 type MagicFunctionName = keyof typeof MagicFunctions;
 
-export function createTemplate(sourceText: string, keepNames: ReadonlySet<string> = new Set()): Pick<ProcessingState, 'template' | 'dataStartOffset'> {
+export function * createTemplate(jsSource: string, keepNames: ReadonlySet<string> = new Set()): IterableIterator<Pick<ProcessingState, 'template' | 'dataStartOffset' | 'shouldCheckHtml'>> {
 	const variables: IBootstrapVariables = {
 		_canvas: createVariable('c'),
 		_ctx: createVariable('b'),
@@ -26,34 +26,50 @@ export function createTemplate(sourceText: string, keepNames: ReadonlySet<string
 		_evaledString: createVariable('e'),
 		_negative: createVariable('p'),
 	};
-	const onloadTemplate = createJsTemplate(
-		"_ctx=_canvas.getContext`2d`;for(_negative=_evaledString='';_zero=_ctx.getImageData(159,0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(e)",
-		variables,
-		new Set(),
-	);
+
 	const payloadTemplate = createJsTemplate(
-		sourceText,
+		jsSource,
 		variables,
 		keepNames
 	);
 
-	const pngFilter = new Template([ new Set([0, 2]) ], []);
-	const [htmlHead, htmlMid, htmlTail] = "<canvas/id=🎨><img/onload=🏭 src=#>".split(/[🎨🏭]/u).map(createHtmlTemplate);
+	const pngFilter = new Template([ new Set([0, 2]) ]);
+	const canvasId = new Template([variables._canvas]);
+	const finalZero = new Template([0]);
 
-	const mergedTemplate = Template.merge(
-		pngFilter,
-		htmlHead,
-		new Template([variables._canvas], []),
-		htmlMid,
-		onloadTemplate,
-		htmlTail,
-		payloadTemplate
-	)
+	for (const trimWaka of [false, false]) {
+		for (const swapEquals of [false, true]) {
+			const init = (swapEquals
+				? "_negative=_evaledString=''"
+				: "_evaledString=_negative=''"
+			);
+			const offset = (trimWaka ? 159 : 158);
+			const onloadTemplate = createJsTemplate(
+				"_ctx=_canvas.getContext`2d`;for(" + init + ";_zero=_ctx.getImageData(" + offset + ",0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(e)",
+				variables,
+				new Set(),
+			);
+			const html = "<canvas/id=🎨><img/onload=🏭 src=#" + (trimWaka ? "" : ">");
+			const [htmlHead, htmlMid, htmlTail] = html.split(/[🎨🏭]/u).map(createHtmlTemplate);
 
-	return {
-		template: mergedTemplate,
-		dataStartOffset: mergedTemplate.contents.length - payloadTemplate.contents.length,
-	};
+			const mergedTemplate = Template.merge(
+				pngFilter,
+				htmlHead,
+				canvasId,
+				htmlMid,
+				onloadTemplate,
+				htmlTail,
+				payloadTemplate,
+				finalZero
+			);
+		
+			yield {
+				template: mergedTemplate,
+				dataStartOffset: mergedTemplate.contents.length - payloadTemplate.contents.length - finalZero.contents.length,
+				shouldCheckHtml: trimWaka,
+			};
+		}
+	}
 }
 
 function createHtmlTemplate(template: string): Template {

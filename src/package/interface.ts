@@ -21,7 +21,8 @@ export interface ITemplate {
 /** An object that is passed from one stage to another */
 export interface ProcessingState {
 	template: ITemplate;
+	shouldCheckHtml: boolean;
 	dataStartOffset: number;
 	usedBackrefIndices: ReadonlySet<number>;
-	bytes: number[];
+	bytes: Uint8Array;
 }

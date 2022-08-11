@@ -3,7 +3,7 @@ import { TemplateError } from './template.js';
 
 export function inferFromFrequency(
 	processingState: Pick<ProcessingState, 'template' | 'dataStartOffset' | 'usedBackrefIndices'>
-): Pick<ProcessingState, 'template' | 'dataStartOffset' | 'usedBackrefIndices'> {
+): Pick<ProcessingState, 'template'> {
 	const { template, dataStartOffset, usedBackrefIndices } = processingState;
 	const buckets = bucketedByOccurence(template, usedBackrefIndices, dataStartOffset);
 	let newTemplate = template;
@@ -29,8 +29,6 @@ export function inferFromFrequency(
 	}
 	return {
 		template: newTemplate,
-		dataStartOffset,
-		usedBackrefIndices,
 	};
 }
 
