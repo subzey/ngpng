@@ -74,10 +74,10 @@ function applyBackref({usedOffset, referencedOffset, length } : IFoundBackref, t
 		if (referencedPart === usedPart) {
 			continue;
 		}
-		const intersection = intersect(referencedPart, usedPart);
-		if (intersection === undefined) {
-			throw new TemplateError('Parts values are no longer intersecting');
+		if (!template.isMatching(referencedOffset + i, usedOffset + i)) {
+			throw new TemplateError('Parts cannot be merged');
 		}
+		const intersection = intersect(referencedPart, usedPart)!;
 		if (typeof referencedPart !== 'number') {
 			template = template.replacePart(referencedPart, intersection);
 		}
