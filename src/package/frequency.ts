@@ -95,7 +95,14 @@ function bucketedByOccurence(template: ITemplate, usedBackrefIndices: ReadonlySe
 	const rv: Set<number>[] = [];
 	let lastOccurences = -Infinity;
 	const stats = getStats(template, usedBackrefIndices, dataStartOffset);
-	const sorted = [...stats].sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
+	const sorted = [...stats].sort((a, b) => (
+		// Occurences, rare -> often
+		(a[1] - b[1]) ||
+		// Readability, more readable -> less readable
+		(readability(b[0])) - readability(a[0])) ||
+		// CharCode. Just for stability
+		(a[0] - b[0])
+	);
 	for (const [value, occurences] of sorted) {
 		if (occurences > lastOccurences) {
 			rv.push(new Set());
@@ -119,4 +126,25 @@ function getOccurences(template: ITemplate, usedBackrefIndices: ReadonlySet<numb
 		}
 	}
 	return count;
+}
+
+function readability(value: number) {
+	// Space and readable ASCII
+	if (value >= 0x20 && value <= 0x7e) {
+		return 4;
+	}
+	// U+0080..U+00FF, whatever it is
+	if (value >= 0x80) {
+		return 3;
+	}
+	// \t and \n
+	if (value === 9 || value === 10) {
+		return 2;
+	}
+	// \r
+	if (value === 13) {
+		return 1;
+	}
+	// NUL, DEL, and all the special chars 
+	return 0;
 }
