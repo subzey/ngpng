@@ -1,4 +1,4 @@
-import type { ITemplatePart, ITemplateVaryingPart } from "./template.js";
+import type { ITemplatePart, ITemplateVaryingPart, ProcessingState } from "./interface.js";
 import { Template } from "./template.js";
 
 import typescript from 'typescript';
@@ -18,7 +18,7 @@ const MagicFunctions = {
 
 type MagicFunctionName = keyof typeof MagicFunctions;
 
-export function createTemplate(sourceText: string, keepNames: ReadonlySet<string> = new Set()) {
+export function createTemplate(sourceText: string, keepNames: ReadonlySet<string> = new Set()): Pick<ProcessingState, 'template' | 'dataStartOffset'> {
 	const variables: IBootstrapVariables = {
 		_canvas: createVariable('c'),
 		_ctx: createVariable('b'),

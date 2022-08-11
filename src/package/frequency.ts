@@ -1,15 +1,10 @@
-import { ITemplateVaryingPart, TemplateError } from './template.js';
-import { ITemplate } from './template.js';
+import type { ITemplate, ITemplatePart, ITemplateVaryingPart, ProcessingState } from './interface.js';
+import { TemplateError } from './template.js';
 
-export function inferFromFrequency({
-	template,
-	dataStartOffset,
-	usedBackrefIndices,
-}: {
-	template: ITemplate,
-	dataStartOffset: number,
-	usedBackrefIndices: ReadonlySet<number>
-}) {
+export function inferFromFrequency(
+	processingState: Pick<ProcessingState, 'template' | 'dataStartOffset' | 'usedBackrefIndices'>
+): Pick<ProcessingState, 'template' | 'dataStartOffset' | 'usedBackrefIndices'> {
+	const { template, dataStartOffset, usedBackrefIndices } = processingState;
 	const buckets = bucketedByOccurence(template, usedBackrefIndices, dataStartOffset);
 	let newTemplate = template;
 	while (buckets.length > 0) {
@@ -32,9 +27,11 @@ export function inferFromFrequency({
 		}
 		newTemplate = bestCandidate.template;
 	}
-
-	console.log(newTemplate.dump());
-	return newTemplate;
+	return {
+		template: newTemplate,
+		dataStartOffset,
+		usedBackrefIndices,
+	};
 }
 
 function * applyAllValues(template: ITemplate, values: ReadonlySet<number>): IterableIterator<{ value: number, template: ITemplate }> {
@@ -44,9 +41,6 @@ function * applyAllValues(template: ITemplate, values: ReadonlySet<number>): Ite
 }
 
 function * applyValue(template: ITemplate, value: number): IterableIterator<{ value: number, template: ITemplate }> {
-	if (value === 34 || value === 39) {
-		debugger;
-	}
 	const matchingParts: Set<ITemplateVaryingPart> = new Set();
 	for (const part of template.contents) {
 		if (typeof part === 'number') {

@@ -1,4 +1,4 @@
-import type { ITemplate } from './template.js';
+import type { ITemplate, ProcessingState } from './interface.js';
 import { intersect } from './moving-part.js';
 import { TemplateError } from './template.js';
 
@@ -9,7 +9,7 @@ interface IFoundBackref {
 }
 
 /**
- * Tries to infer some values by matching the {@link template} with itself.
+ * Tries to infer some values by matching the {@link ITemplate} with itself.
  * ```text
  * ┌─┬─┬─┬─┬─╔═╤═╤═╗─┐
  * │A│B│C│D│x║B│?│D║y│
@@ -19,14 +19,8 @@ interface IFoundBackref {
  *            ? = C
  * ```  
  */
-export function inferFromBackrefs({
-	template,
-	dataStartOffset = 0
-}: {
-	template: ITemplate;
-	dataStartOffset: number;
-}) {
-	console.log(dataStartOffset);
+export function inferFromBackrefs(processingState: Pick<ProcessingState, 'template' | 'dataStartOffset'>): Pick<ProcessingState, 'template' | 'dataStartOffset' | 'usedBackrefIndices'> {
+	const { template, dataStartOffset } = processingState;
 	const usedBackrefIndices: Set<number> = new Set();
 	const candidates = Array.from(backrefCandidates(template, dataStartOffset)).sort((a, b) => {
 		return (
@@ -37,9 +31,10 @@ export function inferFromBackrefs({
 			(a.usedOffset - a.referencedOffset) - (b.usedOffset - b.referencedOffset)
 		);
 	});
+	let newTemplate = template;
 	for (const backref of candidates) {
 		try {
-			template = applyBackref(backref, template, usedBackrefIndices);
+			newTemplate = applyBackref(backref, newTemplate, usedBackrefIndices);
 			for (let i = 0; i < backref.length; i++) {
 				usedBackrefIndices.add(backref.usedOffset + i);
 			}
@@ -61,7 +56,7 @@ export function inferFromBackrefs({
 		}
 	}
 	return {
-		template,
+		template: newTemplate,
 		dataStartOffset,
 		usedBackrefIndices,
 	};

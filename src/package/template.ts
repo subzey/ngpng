@@ -1,16 +1,9 @@
-/** A set of possible byte values */
-export type ITemplateVaryingPart = ReadonlySet<number>;
+import type { ITemplate, ITemplatePart, ITemplateVaryingPart } from "./interface.js";
 
-/** A set of possible byte values or a concrete numeric value */
-export type ITemplatePart = ITemplateVaryingPart | number;
-
-// FIXME
-export interface ITemplate extends Template {}
-
-/** Thrown when we cannot return a valid Template for some reason */
+/** Is thrown when a valid Template coannot be constructed for some reason */
 export class TemplateError extends Error {}
 
-export class Template {
+export class Template implements ITemplate {
 	public readonly contents: readonly ITemplatePart[];
 	public readonly exclusiveGroups: readonly (ReadonlySet<ITemplateVaryingPart>)[];
 
