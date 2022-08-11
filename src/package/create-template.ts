@@ -43,7 +43,7 @@ export function * createTemplate(jsSource: string, keepNames: ReadonlySet<string
 	const canvasId = new Template([variables._canvas]);
 	const finalZero = new Template([0]);
 
-	for (const trimWaka of [false, false]) {
+	for (const trimWaka of [false, true]) {
 		for (const swapEquals of [false, true]) {
 			const init = (swapEquals
 				? "_negative=_evaledString=''"
