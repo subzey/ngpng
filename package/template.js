@@ -1,3 +1,6 @@
+/** Thrown when we cannot return a valid Template for some reason */
+export class TemplateError extends Error {
+}
 export class Template {
     constructor(contents, exclusiveGroups = []) {
         this.exclusiveGroups = exclusiveGroups;
@@ -46,7 +49,6 @@ export class Template {
         return false;
     }
     replacePart(replacedPart, replaceWith) {
-        debugger;
         if (replacedPart === replaceWith) {
             // Too easy
             return this;
@@ -70,6 +72,9 @@ export class Template {
                     }
                     const newPart = new Set(part);
                     newPart.delete(replaceWith);
+                    if (newPart.size === 0) {
+                        throw new TemplateError('Template part is an empty set');
+                    }
                     replacements.set(part, newPart);
                 }
             }
@@ -90,8 +95,26 @@ export class Template {
             }
             if (newExclusiveGroup === null) {
                 newExclusiveGroups.push(oldExclusiveGroup);
+                continue;
             }
-            else if (newExclusiveGroup.size > 1) {
+            // (Dirty) check if new value is applicable
+            if (newExclusiveGroup !== null) {
+                const possibleValues = new Set();
+                for (const part of newExclusiveGroup) {
+                    if (typeof part === 'number') {
+                        possibleValues.add(part);
+                    }
+                    else {
+                        for (const v of part) {
+                            possibleValues.add(v);
+                        }
+                    }
+                }
+                if (possibleValues.size < newExclusiveGroup.size) {
+                    throw new TemplateError('Exclusive groups invariant cannot be met');
+                }
+            }
+            if (newExclusiveGroup.size > 1) {
                 newExclusiveGroups.push(newExclusiveGroup);
             }
         }
@@ -104,7 +127,17 @@ export class Template {
                 newContents.push(part);
             }
         }
-        return new Template(newContents, newExclusiveGroups);
+        const newTemplate = new Template(newContents, newExclusiveGroups);
+        for (const part of newTemplate.contents) {
+            if (typeof part !== 'number' && part.size === 1) {
+                // Convert degenerate sets into number.
+                // This also helps to keep the exclusive group invariant better
+                // We pick only the first one: After some recursive calls
+                // all the parts should be processed.
+                return newTemplate.replacePart(part, [...part][0]);
+            }
+        }
+        return newTemplate;
     }
     dump({ from = 0, to = Infinity } = {}) {
         let rv = '';

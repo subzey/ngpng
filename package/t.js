@@ -1,5 +1,6 @@
 import { createTemplate } from './create-template.js';
 import { inferFromBackrefs } from './backrefs.js';
+import { inferFromFrequency } from './frequency.js';
 
 
 // console.log(dumpTemplate(createBootstrapTemplate().contents));
@@ -12,11 +13,12 @@ const initial = createTemplate(
 	pl,
 	new Set(['x', 'y', 't'])
 );
-console.log(initial.template.dump());
-
+console.log(initial.template.dump() + '\n\n');
 const backreffed = inferFromBackrefs(initial);
+console.log(backreffed.template.dump() + '\n\n');
+const template = inferFromFrequency(backreffed);
+console.log(template.dump() + '\n\n');
 
-console.log(backreffed.template.dump());
 // console.log('\n');
 // console.log(assumption);
 // console.log(template.dump({assumption}));

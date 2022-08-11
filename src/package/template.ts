@@ -7,6 +7,9 @@ export type ITemplatePart = ITemplateVaryingPart | number;
 // FIXME
 export interface ITemplate extends Template {}
 
+/** Thrown when we cannot return a valid Template for some reason */
+export class TemplateError extends Error {}
+
 export class Template {
 	public readonly contents: readonly ITemplatePart[];
 	public readonly exclusiveGroups: readonly (ReadonlySet<ITemplateVaryingPart>)[];
@@ -70,8 +73,6 @@ export class Template {
 	}
 
 	public replacePart(replacedPart: ITemplateVaryingPart, replaceWith: ITemplatePart): Template {
-		debugger;
-
 		if (replacedPart === replaceWith) {
 			// Too easy
 			return this;
@@ -99,7 +100,7 @@ export class Template {
 					const newPart = new Set(part);
 					newPart.delete(replaceWith);
 					if (newPart.size === 0) {
-						throw new Error('Template part is an empty set');
+						throw new TemplateError('Template part is an empty set');
 					}
 					replacements.set(part, newPart);
 				}
@@ -138,7 +139,7 @@ export class Template {
 					}
 				}
 				if (possibleValues.size < newExclusiveGroup.size) {
-					throw new Error('Exclusive groups invariant cannot be met');
+					throw new TemplateError('Exclusive groups invariant cannot be met');
 				}
 			}
 			if (newExclusiveGroup.size > 1) {

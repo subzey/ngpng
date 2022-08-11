@@ -1,5 +1,6 @@
+import type { ITemplate } from './template.js';
 import { intersect } from './moving-part.js';
-import type { ITemplate } from './template.js'
+import { TemplateError } from './template.js';
 
 interface IFoundBackref {
 	referencedOffset: number;
@@ -37,24 +38,26 @@ export function inferFromBackrefs({
 		);
 	});
 	for (const backref of candidates) {
-		console.log(backref);
 		try {
 			template = applyBackref(backref, template, usedBackrefIndices);
 			for (let i = 0; i < backref.length; i++) {
 				usedBackrefIndices.add(backref.usedOffset + i);
 			}
-			console.log(`Accepted ${backref.referencedOffset} -> ${backref.usedOffset}: ${backref.length}`);
-			console.log(template.dump({
-				from: backref.referencedOffset,
-				to: backref.referencedOffset + backref.length,
-			}));
-			console.log(template.dump({
-				from: backref.usedOffset,
-				to: backref.usedOffset + backref.length,
-			}));
+			// console.log(`Accepted ${backref.referencedOffset} -> ${backref.usedOffset}: ${backref.length}`);
+			// console.log(template.dump({
+			// 	from: backref.referencedOffset,
+			// 	to: backref.referencedOffset + backref.length,
+			// }));
+			// console.log(template.dump({
+			// 	from: backref.usedOffset,
+			// 	to: backref.usedOffset + backref.length,
+			// }));
 		} catch (e) {
-			console.log(e);
-			// Nothing;
+			if (e instanceof TemplateError) {
+				// That's okay
+				continue;
+			}
+			throw e; // rethrow
 		}
 	}
 	return {
@@ -68,7 +71,7 @@ export function inferFromBackrefs({
 function applyBackref({usedOffset, referencedOffset, length } : IFoundBackref, template: ITemplate, usedBackrefIndices: ReadonlySet<number>): ITemplate {
 	for (let i = 0; i < length; i++) {
 		if (usedBackrefIndices.has(usedOffset + i)) {
-			throw new Error('One of the offsets is already using a (better) reference');
+			throw new TemplateError('One of the offsets is already using a (better) reference');
 		}
 	}
 	for (let i = 0; i < length; i++) {
@@ -79,7 +82,7 @@ function applyBackref({usedOffset, referencedOffset, length } : IFoundBackref, t
 		}
 		const intersection = intersect(referencedPart, usedPart);
 		if (intersection === undefined) {
-			throw new Error('Parts are no longer intersecting');
+			throw new TemplateError('Parts values are no longer intersecting');
 		}
 		if (typeof referencedPart !== 'number') {
 			template = template.replacePart(referencedPart, intersection);
