@@ -1,4 +1,5 @@
 import type { ITemplate, ProcessingState } from './interface.js';
+import { bucketed, getLowerBoundIndex } from './alcorhythms.js';
 import { intersect } from './moving-part.js';
 import { TemplateError } from './template.js';
 
@@ -6,6 +7,13 @@ interface IFoundBackref {
 	referencedOffset: number;
 	usedOffset: number;
 	length: number;
+}
+
+interface Retrace {
+	bucketIndex: number;
+	bucketItemIndex: number;
+	template: ITemplate;
+	backrefUsageMap: Map<number, { bucketIndex: number, bucketItemIndex: number }>;
 }
 
 /**
@@ -19,9 +27,9 @@ interface IFoundBackref {
  *            ? = C
  * ```  
  */
-export function inferFromBackrefs(processingState: Pick<ProcessingState, 'template' | 'dataStartOffset'>): Pick<ProcessingState, 'template' | 'usedBackrefIndices'> {
+export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'template' | 'dataStartOffset'>): IterableIterator<Pick<ProcessingState, 'template' | 'usedBackrefIndices'>> {
 	const { template, dataStartOffset } = processingState;
-	const usedBackrefIndices: Set<number> = new Set();
+
 	const candidates = Array.from(backrefCandidates(template, dataStartOffset)).sort((a, b) => {
 		return (
 			// Prefer longer backrefs
@@ -31,43 +39,93 @@ export function inferFromBackrefs(processingState: Pick<ProcessingState, 'templa
 			(a.usedOffset - a.referencedOffset) - (b.usedOffset - b.referencedOffset)
 		);
 	});
-	let newTemplate = template;
-	for (const backref of candidates) {
-		try {
-			newTemplate = applyBackref(backref, newTemplate, usedBackrefIndices);
-			for (let i = 0; i < backref.length; i++) {
-				usedBackrefIndices.add(backref.usedOffset + i);
+
+	const buckets = Array.from(bucketed(
+		candidates,
+		backref => getLowerBoundIndex(
+			distanceExtraCodesBreakpoints,
+			backref.usedOffset - backref.referencedOffset
+		)
+	));
+
+	const retraces: Retrace[] = [{
+		bucketIndex: 0,
+		bucketItemIndex: 0,
+		template,
+		backrefUsageMap: new Map(),
+	}];
+
+	while (retraces.length > 0) {
+		let {
+			bucketIndex,
+			bucketItemIndex,
+			template,
+			backrefUsageMap,
+		} = retraces.pop()!;
+
+		for (; bucketIndex < buckets.length; bucketIndex++, bucketItemIndex = 0) {
+			const bucket = buckets[bucketIndex];
+			const maybeRetraces: Map<number, Retrace> = new Map();
+			const willRetraceIndices: Set<number> = new Set();
+
+			nextBackref: for (; bucketItemIndex < bucket.length; bucketItemIndex) {
+				const backref = bucket[bucketItemIndex];
+				for (let i = 0; i < backref.length; i++) {
+					const collidingBackrefUsage = backrefUsageMap.get(backref.usedOffset + i);
+					if (!collidingBackrefUsage) {
+						continue;
+					}
+					if (collidingBackrefUsage.bucketIndex === bucketIndex) {
+						// The colliding backref is in the same bucket.
+						// Will retrace.
+						willRetraceIndices.add(collidingBackrefUsage.bucketItemIndex);
+					}
+					// There are some colliding backreferences
+					continue nextBackref;
+				}
+
+				let newTemplate: ITemplate;
+				try {
+					newTemplate = applyBackref(backref, template);
+				} catch (e) {
+					if (e instanceof TemplateError) {
+						// That's okay
+						continue;
+					}
+					throw e; // rethrow
+				}
+
+				// Save state for a possible retrace
+				maybeRetraces.set(bucketItemIndex, {
+					backrefUsageMap: new Map(backrefUsageMap), // Shallow copy
+					bucketIndex,
+					bucketItemIndex: bucketItemIndex + 1, // Skip over this one
+					template: template,
+				});
+
+				template = newTemplate;
+				for (let i = 0; i < backref.length; i++) {
+					backrefUsageMap.set(
+						backref.usedOffset + i,
+						{ bucketIndex, bucketItemIndex }
+					)
+				}
 			}
-			// console.log(`Accepted ${backref.referencedOffset} -> ${backref.usedOffset}: ${backref.length}`);
-			// console.log(template.dump({
-			// 	from: backref.referencedOffset,
-			// 	to: backref.referencedOffset + backref.length,
-			// }));
-			// console.log(template.dump({
-			// 	from: backref.usedOffset,
-			// 	to: backref.usedOffset + backref.length,
-			// }));
-		} catch (e) {
-			if (e instanceof TemplateError) {
-				// That's okay
-				continue;
+
+			for (const willRetraceIndex of willRetraceIndices) {
+				retraces.push(maybeRetraces.get(willRetraceIndex)!);
 			}
-			throw e; // rethrow
+		}
+
+		yield {
+			template,
+			usedBackrefIndices: new Set(backrefUsageMap.keys()),
 		}
 	}
-	return {
-		template: newTemplate,
-		usedBackrefIndices,
-	};
 }
 
 
-function applyBackref({usedOffset, referencedOffset, length } : IFoundBackref, template: ITemplate, usedBackrefIndices: ReadonlySet<number>): ITemplate {
-	for (let i = 0; i < length; i++) {
-		if (usedBackrefIndices.has(usedOffset + i)) {
-			throw new TemplateError('One of the offsets is already using a (better) reference');
-		}
-	}
+function applyBackref({usedOffset, referencedOffset, length } : IFoundBackref, template: ITemplate): ITemplate {
 	for (let i = 0; i < length; i++) {
 		const referencedPart = template.contents[referencedOffset + i];
 		const usedPart = template.contents[usedOffset + i];
@@ -111,3 +169,12 @@ function * backrefCandidates(
 		}
 	}
 }
+
+/**
+ * Different backref distances ore encoded with the different amounts of
+ * extra bits. Naturally, we want it to be as short as possible.
+ * @see {@link https://www.ietf.org/rfc/rfc1951.txt}, page 11
+ */
+const distanceExtraCodesBreakpoints = [
+	1, 5, 9, 17, 33, 65, 129, 257, 513, 1025, 2049, 4097, 8193, 16385
+];
