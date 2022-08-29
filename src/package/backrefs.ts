@@ -62,7 +62,7 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 			backrefUsageMap,
 		} = retraces.pop()!;
 
-		console.log('Trace from', bucketIndex, bucketItemIndex);
+		// console.log('Trace from', bucketIndex, bucketItemIndex);
 
 		for (; bucketIndex < buckets.length; bucketIndex++, bucketItemIndex = 0) {
 			const bucket = buckets[bucketIndex];
@@ -119,7 +119,7 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 			}
 
 			for (const willRetraceIndex of willRetraceIndices) {
-				console.log('Will retrace', maybeRetraces.get(willRetraceIndex)!.bucketIndex, maybeRetraces.get(willRetraceIndex)!.bucketItemIndex);
+				// console.log('Will retrace', maybeRetraces.get(willRetraceIndex)!.bucketIndex, maybeRetraces.get(willRetraceIndex)!.bucketItemIndex);
 				retraces.push(maybeRetraces.get(willRetraceIndex)!);
 			}
 		}

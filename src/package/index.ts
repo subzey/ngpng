@@ -7,19 +7,15 @@ import { ITemplate, ProcessingState } from './interface.js';
 export interface Options {
 	keepNames?: Set<string>;
 	zopfliIterations?: number;
-	desperate?: boolean;
 }
 
 export async function run(jsSource: string, options?: Options) {
 	let bestSize = Infinity;
 	let bestPng: Uint8Array | null = null;
-	for await (const png of runAll(jsSource, options)) {
+	for await (const png of runIter(jsSource, options)) {
 		if (png.length < bestSize) {
 			bestSize = png.length;
 			bestPng = png;
-		}
-		if (!options?.desperate) {
-			break;
 		}
 	}
 	if (bestPng === null) {
@@ -28,7 +24,7 @@ export async function run(jsSource: string, options?: Options) {
 	return bestPng;
 }
 
-export async function * runAll(jsSource: string, options?: Options): AsyncIterableIterator<Uint8Array> {
+export async function * runIter(jsSource: string, options?: Options): AsyncIterableIterator<Uint8Array> {
 	let template: ProcessingState['template'];
 	let dataStartOffset: ProcessingState['dataStartOffset'];
 	let shouldCheckHtml: ProcessingState['shouldCheckHtml'];

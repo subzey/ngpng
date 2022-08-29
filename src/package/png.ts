@@ -2,6 +2,7 @@ import { ProcessingState } from './interface.js';
 import { mergeBinary } from './alcorhythms.js';
 import CRC32 from 'crc-32';
 import { WasmZopfliNode } from 'fetchcrunch/wasm-zopfli-node';
+import { inflateRawSync } from 'zlib';
 
 const PNG_SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
 
@@ -17,7 +18,7 @@ export async function createPng(processingState: Pick<ProcessingState, 'bytes' |
 	}
 	return mergeBinary(
 		PNG_SIGNATURE,
-		createIhdr(processingState.dataStartOffset - 1),
+		createIhdr(processingState.bytes.length - 1),
 		idat
 	);
 }
