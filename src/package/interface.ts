@@ -23,7 +23,13 @@ export interface ProcessingState {
 	template: ITemplate;
 	shouldCheckHtml: boolean;
 	dataStartOffset: number;
-	usedBackrefIndices: ReadonlySet<number>;
+	usedBackrefIndices: ReadonlyMap<number, IFoundBackref>;
 	bytes: Uint8Array;
 	zopfliIterations: number | undefined;
+}
+
+export interface IFoundBackref {
+	referencedOffset: number;
+	usedOffset: number;
+	length: number;
 }

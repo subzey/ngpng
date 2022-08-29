@@ -6,5 +6,4 @@ const code = "_now='';for(_sector_y=10;_sector_y-->0;)_cosine=Math.cos(Math.PI/5
 
 run(code, {
 	zopfliIterations: 10000,
-	desperate: true,
 }).then(c => {writeFile('gh-pages/index.html', c)});

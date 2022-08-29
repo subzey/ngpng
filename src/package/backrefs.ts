@@ -1,20 +1,7 @@
-import type { ITemplate, ProcessingState } from './interface.js';
+import type { ITemplate, ProcessingState, IFoundBackref } from './interface.js';
 import { bucketed, getLowerBoundIndex } from './alcorhythms.js';
 import { intersect } from './moving-part.js';
 import { TemplateError } from './template.js';
-
-interface IFoundBackref {
-	referencedOffset: number;
-	usedOffset: number;
-	length: number;
-}
-
-interface Retrace {
-	bucketIndex: number;
-	bucketItemIndex: number;
-	template: ITemplate;
-	backrefUsageMap: Map<number, { bucketIndex: number, bucketItemIndex: number }>;
-}
 
 /**
  * Tries to infer some values by matching the {@link ITemplate} with itself.
@@ -47,87 +34,84 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 		}
 	}
 
-	const retraces: Retrace[] = [{
-		bucketIndex: 0,
-		bucketItemIndex: 0,
-		template,
-		backrefUsageMap: new Map(),
-	}];
+	let rv: { template: ITemplate, usedBackrefIndices: ReadonlyMap<number, IFoundBackref>}[] = [
+		{ template, usedBackrefIndices: new Map() }
+	];
+	for (const bucket of buckets) {
+		let tier = [];
+		for (const { template, usedBackrefIndices } of rv) {
+			tier.push(...applyBucket(template, bucket, usedBackrefIndices));
+		}
+		rv = tier;
+	}
 
-	while (retraces.length > 0) {
-		let {
-			bucketIndex,
-			bucketItemIndex,
-			template,
-			backrefUsageMap,
-		} = retraces.pop()!;
+	console.log(rv.map(v => v.usedBackrefIndices.size));
 
-		// console.log('Trace from', bucketIndex, bucketItemIndex);
+	yield * rv;
+}
 
-		for (; bucketIndex < buckets.length; bucketIndex++, bucketItemIndex = 0) {
-			const bucket = buckets[bucketIndex];
-			const maybeRetraces: Map<number, Retrace> = new Map();
-			const willRetraceIndices: Set<number> = new Set();
-
-			nextBackref: for (; bucketItemIndex < bucket.length; bucketItemIndex++) {
-				const backref = bucket[bucketItemIndex];
-				const conflictedRetraceable: number[] = [];
-				for (let i = 0; i < backref.length; i++) {
-					const collidingBackrefUsage = backrefUsageMap.get(backref.usedOffset + i);
-					if (collidingBackrefUsage) {
-						if (collidingBackrefUsage.bucketIndex !== bucketIndex || backref.length > 3) {
-							// Not retraceable
-							continue nextBackref;
-						} else {
-							conflictedRetraceable.push(collidingBackrefUsage.bucketItemIndex);
-						}
-					}
-				}
-				if (conflictedRetraceable.length > 0) {
-					for (const index of conflictedRetraceable) {
-						willRetraceIndices.add(index);
-					}
-					continue nextBackref;
-				}
-
-				let newTemplate: ITemplate;
-				try {
-					newTemplate = applyBackref(backref, template);
-				} catch (e) {
-					if (e instanceof TemplateError) {
-						// That's okay
-						continue;
-					}
-					throw e; // rethrow
-				}
-
-				// Save state for a possible retrace
-				maybeRetraces.set(bucketItemIndex, {
-					backrefUsageMap: new Map(backrefUsageMap), // Shallow copy
-					bucketIndex,
-					bucketItemIndex: bucketItemIndex + 1, // Skip over this one
-					template: template,
-				});
-
-				template = newTemplate;
-				for (let i = 0; i < backref.length; i++) {
-					backrefUsageMap.set(
-						backref.usedOffset + i,
-						{ bucketIndex, bucketItemIndex }
-					)
-				}
-			}
-
-			for (const willRetraceIndex of willRetraceIndices) {
-				// console.log('Will retrace', maybeRetraces.get(willRetraceIndex)!.bucketIndex, maybeRetraces.get(willRetraceIndex)!.bucketItemIndex);
-				retraces.push(maybeRetraces.get(willRetraceIndex)!);
+function * applyBucket(template: ITemplate, bucket: IFoundBackref[], usedBackrefIndices: ReadonlyMap<number, IFoundBackref>) {
+	bucket = bucket.filter(backref => {
+		for (let i = 0; i < backref.length; i++) {
+			if (usedBackrefIndices.has(backref.usedOffset + i)) {
+				return false;
 			}
 		}
-
-		yield {
-			template,
-			usedBackrefIndices: new Set(backrefUsageMap.keys()),
+		return true;
+	});
+	for (const v of _applyBucket(template, bucket, usedBackrefIndices, 0)) {
+		if ('conflicting' in v) {
+			throw new Error('Unreachable');
 		}
+		yield v;
+	}
+}
+
+function * _applyBucket(template: ITemplate, bucket: IFoundBackref[], usedBackrefIndices: ReadonlyMap<number, IFoundBackref>, index = 0): IterableIterator<
+	{ template: ITemplate, usedBackrefIndices: ReadonlyMap<number, IFoundBackref> } |
+	{ conflicting: IFoundBackref }
+> {
+	if (index >= bucket.length) {
+		yield { template, usedBackrefIndices };
+		return;
+	}
+	const backref = bucket[index];
+	for (let i = 0; i < backref.length; i++) {
+		const conflicting = usedBackrefIndices.get(backref.usedOffset + i);
+		if (conflicting) {
+			yield * _applyBucket(template, bucket, usedBackrefIndices, index + 1);
+			yield { conflicting };
+			return;
+		}
+	}
+
+	let newTemplate = template;
+	try {
+		newTemplate = applyBackref(backref, template);
+	} catch (e) {
+		if (!(e instanceof TemplateError)) {
+			throw e; // rethrow
+		}
+	}
+	if (newTemplate === template) {
+		yield * _applyBucket(template, bucket, usedBackrefIndices, index + 1);
+		return;
+	}
+	let newUsedBackrefIndices = new Map(usedBackrefIndices);
+	for (let i = 0; i < backref.length; i++) {
+		newUsedBackrefIndices.set(backref.usedOffset + i, backref);
+	}
+
+	let hadConflicts = false;
+	for (const v of _applyBucket(newTemplate, bucket, newUsedBackrefIndices, index + 1)) {
+		if ('conflicting' in v && v.conflicting === backref) {
+			hadConflicts = true;
+		} else {
+			yield v;
+		}
+	}
+	if (hadConflicts) {
+		yield * _applyBucket(template, bucket, usedBackrefIndices, index + 1);
 	}
 }
 

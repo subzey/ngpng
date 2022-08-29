@@ -73,7 +73,7 @@ function * applyValue(template: ITemplate, value: number): IterableIterator<{ va
 	}
 }
 
-function getStats(template: ITemplate, usedBackrefIndices: ReadonlySet<number>, dataStartOffset: number): Map<number, number> {
+function getStats(template: ITemplate, usedBackrefIndices: ReadonlyMap<number, unknown>, dataStartOffset: number): Map<number, number> {
 	const stats: Map<number, number> = new Map();
 	for (let i = 0; i < 256; i++) {
 		stats.set(i, 0);
@@ -91,7 +91,7 @@ function getStats(template: ITemplate, usedBackrefIndices: ReadonlySet<number>, 
 	return stats;
 }
 
-function bucketedByOccurence(template: ITemplate, usedBackrefIndices: ReadonlySet<number>, dataStartOffset: number): Set<number>[] {
+function bucketedByOccurence(template: ITemplate, usedBackrefIndices: ReadonlyMap<number, unknown>, dataStartOffset: number): Set<number>[] {
 	const rv: Set<number>[] = [];
 	let lastOccurences = -Infinity;
 	const stats = getStats(template, usedBackrefIndices, dataStartOffset);
@@ -115,7 +115,7 @@ function bucketedByOccurence(template: ITemplate, usedBackrefIndices: ReadonlySe
 	return rv;
 }
 
-function getOccurences(template: ITemplate, usedBackrefIndices: ReadonlySet<number>, dataStartOffset: number, value: number): number {
+function getOccurences(template: ITemplate, usedBackrefIndices: ReadonlyMap<number, unknown>, dataStartOffset: number, value: number): number {
 	let count = 0;
 	for (let i = dataStartOffset; i < template.contents.length; i++) {
 		if (usedBackrefIndices.has(i)) {
