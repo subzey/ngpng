@@ -25,4 +25,5 @@ export interface ProcessingState {
 	dataStartOffset: number;
 	usedBackrefIndices: ReadonlySet<number>;
 	bytes: Uint8Array;
+	zopfliIterations: number | undefined;
 }
