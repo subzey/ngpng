@@ -9,10 +9,10 @@ export interface Options {
 	zopfliIterations?: number;
 }
 
-export async function process(jsSource: string, options?: Options) {
+export async function run(jsSource: string, options?: Options) {
 	let bestSize = Infinity;
 	let bestPng: Uint8Array | null = null;
-	for await (const png of processAll(jsSource, options)) {
+	for await (const png of runAll(jsSource, options)) {
 		if (png.length < bestSize) {
 			bestSize = png.length;
 			bestPng = png;
@@ -24,7 +24,7 @@ export async function process(jsSource: string, options?: Options) {
 	return bestPng;
 }
 
-export async function * processAll(jsSource: string, options?: Options): AsyncIterableIterator<Uint8Array> {
+export async function * runAll(jsSource: string, options?: Options): AsyncIterableIterator<Uint8Array> {
 	let template: ProcessingState['template'];
 	let dataStartOffset: ProcessingState['dataStartOffset'];
 	let shouldCheckHtml: ProcessingState['shouldCheckHtml'];
