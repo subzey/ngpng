@@ -40,13 +40,12 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 		);
 	});
 
-	const buckets = Array.from(bucketed(
-		candidates,
-		backref => getLowerBoundIndex(
-			distanceExtraCodesBreakpoints,
-			backref.usedOffset - backref.referencedOffset
-		)
-	));
+	const buckets: IFoundBackref[][] = [];
+	for (const bucketedByLength of bucketed(candidates, backref => backref.length)) {
+		for (const bucket of bucketed(bucketedByLength, getExtraCodesLength)) {
+			buckets.push(bucket);
+		}
+	}
 
 	const retraces: Retrace[] = [{
 		bucketIndex: 0,
@@ -72,17 +71,22 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 
 			nextBackref: for (; bucketItemIndex < bucket.length; bucketItemIndex++) {
 				const backref = bucket[bucketItemIndex];
+				const conflictedRetraceable: number[] = [];
 				for (let i = 0; i < backref.length; i++) {
 					const collidingBackrefUsage = backrefUsageMap.get(backref.usedOffset + i);
-					if (!collidingBackrefUsage) {
-						continue;
+					if (collidingBackrefUsage) {
+						if (collidingBackrefUsage.bucketIndex !== bucketIndex || backref.length > 3) {
+							// Not retraceable
+							continue nextBackref;
+						} else {
+							conflictedRetraceable.push(collidingBackrefUsage.bucketItemIndex);
+						}
 					}
-					if (collidingBackrefUsage.bucketIndex === bucketIndex && backref.length > 3) {
-						// The colliding backref is in the same bucket.
-						// Will retrace.
-						willRetraceIndices.add(collidingBackrefUsage.bucketItemIndex);
+				}
+				if (conflictedRetraceable.length > 0) {
+					for (const index of conflictedRetraceable) {
+						willRetraceIndices.add(index);
 					}
-					// There are some colliding backreferences
 					continue nextBackref;
 				}
 
@@ -126,7 +130,6 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 		}
 	}
 }
-
 
 function applyBackref({usedOffset, referencedOffset, length } : IFoundBackref, template: ITemplate): ITemplate {
 	for (let i = 0; i < length; i++) {
@@ -181,3 +184,8 @@ function * backrefCandidates(
 const distanceExtraCodesBreakpoints = [
 	1, 5, 9, 17, 33, 65, 129, 257, 513, 1025, 2049, 4097, 8193, 16385
 ];
+
+
+function getExtraCodesLength(backref: IFoundBackref): number {
+	return getLowerBoundIndex(distanceExtraCodesBreakpoints, backref.usedOffset - backref.referencedOffset);
+}
