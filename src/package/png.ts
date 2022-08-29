@@ -25,12 +25,12 @@ export async function createPng(processingState: Pick<ProcessingState, 'bytes' |
 function createIhdr(imageWidth: number): Uint8Array {
 	const ihdr = new Uint8Array(4 + 4 + 13 + 4);
 	const dataView = new DataView(ihdr.buffer);
-	dataView.setUint32(0, ihdr.length - 12, true);
+	dataView.setUint32(0, ihdr.length - 12, false);
 	ihdr.set([0x49, 0x48, 0x44, 0x52], 4);
-	dataView.setUint32(8, imageWidth, true);
-	dataView.setUint32(12, 2, true);
+	dataView.setUint32(8, imageWidth, false);
+	dataView.setUint32(12, 2, false);
 	dataView.setUint8(16, 8);
-	dataView.setUint32(ihdr.length - 4, CRC32.buf(ihdr.subarray(4, -4)), true);
+	dataView.setUint32(ihdr.length - 4, CRC32.buf(ihdr.subarray(4, -4)), false);
 	return ihdr;
 }
 
@@ -63,7 +63,7 @@ async function createIdat(bytes: Uint8Array, dataStartOffset: number, zopfliIter
 		// No ADLER32 checksum
 		// No CRC32 chunk checksum
 	);
-	new DataView(idat.buffer).setUint32(0, idat.length - 8, true);
+	new DataView(idat.buffer).setUint32(0, idat.length - 8, false);
 	return idat;
 }
 

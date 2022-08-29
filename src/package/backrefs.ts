@@ -68,16 +68,17 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 			const maybeRetraces: Map<number, Retrace> = new Map();
 			const willRetraceIndices: Set<number> = new Set();
 
-			nextBackref: for (; bucketItemIndex < bucket.length; bucketItemIndex) {
+			nextBackref: for (; bucketItemIndex < bucket.length; bucketItemIndex++) {
 				const backref = bucket[bucketItemIndex];
 				for (let i = 0; i < backref.length; i++) {
 					const collidingBackrefUsage = backrefUsageMap.get(backref.usedOffset + i);
 					if (!collidingBackrefUsage) {
 						continue;
 					}
-					if (collidingBackrefUsage.bucketIndex === bucketIndex) {
+					if (collidingBackrefUsage.bucketIndex === bucketIndex && backref.length > 3) {
 						// The colliding backref is in the same bucket.
 						// Will retrace.
+						console.log('Will retrace', backref.length, collidingBackrefUsage.bucketIndex, collidingBackrefUsage.bucketItemIndex);
 						willRetraceIndices.add(collidingBackrefUsage.bucketItemIndex);
 					}
 					// There are some colliding backreferences

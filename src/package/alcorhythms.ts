@@ -38,7 +38,7 @@ export function getLowerBoundIndex<T>(array: ArrayLike<T>, value: T): number {
 export function mergeBinary(...chunks: Uint8Array[]): Uint8Array {
 	let length = 0;
 	for (let i = 0; i < chunks.length; i++) {
-		length = chunks[i].length;
+		length += chunks[i].length;
 	}
 	const rv = new Uint8Array(length);
 	length = 0;

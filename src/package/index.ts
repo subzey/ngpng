@@ -7,6 +7,7 @@ import { ITemplate, ProcessingState } from './interface.js';
 export interface Options {
 	keepNames?: Set<string>;
 	zopfliIterations?: number;
+	desperate?: boolean;
 }
 
 export async function run(jsSource: string, options?: Options) {
@@ -16,6 +17,9 @@ export async function run(jsSource: string, options?: Options) {
 		if (png.length < bestSize) {
 			bestSize = png.length;
 			bestPng = png;
+		}
+		if (!options?.desperate) {
+			break;
 		}
 	}
 	if (bestPng === null) {
@@ -33,9 +37,6 @@ export async function * runAll(jsSource: string, options?: Options): AsyncIterab
 		for ({ template, usedBackrefIndices } of inferFromBackrefs({ template, dataStartOffset })) {
 			template = inferFromFrequency({ template, dataStartOffset, usedBackrefIndices }).template;
 			const bytes = bytesFromTemplate(template);
-			if (bytes === null) {
-				continue;
-			}
 			const png = await createPng({ dataStartOffset, bytes, zopfliIterations: options?.zopfliIterations, shouldCheckHtml });
 			if (png === null) {
 				continue;
@@ -45,13 +46,13 @@ export async function * runAll(jsSource: string, options?: Options): AsyncIterab
 	}
 }
 
-function bytesFromTemplate(template: ITemplate): Uint8Array | null {
+function bytesFromTemplate(template: ITemplate): Uint8Array {
 	const rv = new Uint8Array(template.contents.length);
 	for (let i = 0; i < rv.length; i++) {
-		if (typeof template.contents[i] === 'number') {
-			rv[i] = template.contents[i] as number;
+		if (typeof template.contents[i] !== 'number') {
+			throw new Error('Template was not finalized');
 		}
-		return null;
+		rv[i] = template.contents[i] as number;		
 	}
 	return rv;
 }
