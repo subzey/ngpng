@@ -63,6 +63,8 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 			backrefUsageMap,
 		} = retraces.pop()!;
 
+		console.log('Trace from', bucketIndex, bucketItemIndex);
+
 		for (; bucketIndex < buckets.length; bucketIndex++, bucketItemIndex = 0) {
 			const bucket = buckets[bucketIndex];
 			const maybeRetraces: Map<number, Retrace> = new Map();
@@ -78,7 +80,6 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 					if (collidingBackrefUsage.bucketIndex === bucketIndex && backref.length > 3) {
 						// The colliding backref is in the same bucket.
 						// Will retrace.
-						console.log('Will retrace', backref.length, collidingBackrefUsage.bucketIndex, collidingBackrefUsage.bucketItemIndex);
 						willRetraceIndices.add(collidingBackrefUsage.bucketItemIndex);
 					}
 					// There are some colliding backreferences
@@ -114,6 +115,7 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 			}
 
 			for (const willRetraceIndex of willRetraceIndices) {
+				console.log('Will retrace', maybeRetraces.get(willRetraceIndex)!.bucketIndex, maybeRetraces.get(willRetraceIndex)!.bucketItemIndex);
 				retraces.push(maybeRetraces.get(willRetraceIndex)!);
 			}
 		}
