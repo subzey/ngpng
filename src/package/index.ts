@@ -37,6 +37,7 @@ export async function * runIter(jsSource: string, options?: Options): AsyncItera
 			if (png === null) {
 				continue;
 			}
+			console.log(usedBackrefIndices.size, `=>`, png.length);
 			yield png;
 		}
 	}

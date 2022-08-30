@@ -1,5 +1,5 @@
 import type { ITemplate, ProcessingState, IFoundBackref } from './interface.js';
-import { bucketed, getLowerBoundIndex } from './alcorhythms.js';
+import { bucketed, getLowerBoundIndex, getTopItems } from './alcorhythms.js';
 import { intersect } from './moving-part.js';
 import { TemplateError } from './template.js';
 
@@ -45,9 +45,8 @@ export function * inferFromBackrefs (processingState: Pick<ProcessingState, 'tem
 		rv = tier;
 	}
 
-	console.log(rv.map(v => v.usedBackrefIndices.size));
-
-	yield * rv;
+	// Yield the candidates with the best coverage
+	yield * getTopItems(rv, v => v.usedBackrefIndices.size);
 }
 
 function * applyBucket(template: ITemplate, bucket: IFoundBackref[], usedBackrefIndices: ReadonlyMap<number, IFoundBackref>) {
@@ -72,6 +71,7 @@ function * _applyBucket(template: ITemplate, bucket: IFoundBackref[], usedBackre
 	{ conflicting: IFoundBackref }
 > {
 	if (index >= bucket.length) {
+		// All the bucket items were applied (or skipped)
 		yield { template, usedBackrefIndices };
 		return;
 	}
@@ -79,7 +79,9 @@ function * _applyBucket(template: ITemplate, bucket: IFoundBackref[], usedBackre
 	for (let i = 0; i < backref.length; i++) {
 		const conflicting = usedBackrefIndices.get(backref.usedOffset + i);
 		if (conflicting) {
+			// Continue skipping this one
 			yield * _applyBucket(template, bucket, usedBackrefIndices, index + 1);
+			// Report the conflict
 			yield { conflicting };
 			return;
 		}
@@ -94,6 +96,8 @@ function * _applyBucket(template: ITemplate, bucket: IFoundBackref[], usedBackre
 		}
 	}
 	if (newTemplate === template) {
+		// Could not apply the bakref:
+		// Just continue with the next skipping this one
 		yield * _applyBucket(template, bucket, usedBackrefIndices, index + 1);
 		return;
 	}
@@ -104,6 +108,7 @@ function * _applyBucket(template: ITemplate, bucket: IFoundBackref[], usedBackre
 
 	let hadConflicts = false;
 	for (const v of _applyBucket(newTemplate, bucket, newUsedBackrefIndices, index + 1)) {
+		// Call next (recursively) watching for conflicts
 		if ('conflicting' in v && v.conflicting === backref) {
 			hadConflicts = true;
 		} else {
@@ -111,6 +116,8 @@ function * _applyBucket(template: ITemplate, bucket: IFoundBackref[], usedBackre
 		}
 	}
 	if (hadConflicts) {
+		// The were some conflicts:
+		// Try next skipping this one
 		yield * _applyBucket(template, bucket, usedBackrefIndices, index + 1);
 	}
 }

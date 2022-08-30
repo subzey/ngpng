@@ -48,3 +48,19 @@ export function mergeBinary(...chunks: Uint8Array[]): Uint8Array {
 	}
 	return rv;
 }
+
+export function getTopItems<T>(items: Iterable<T>, getScore: (arg: T) => number): T[] {
+	let bestItems: T[] = [];
+	let bestScore = -Infinity;
+	for (const item of items) {
+		const score = getScore(item);
+		if (score > bestScore) {
+			bestItems = [];
+			bestScore = score;
+		}
+		if (score === bestScore) {
+			bestItems.push(item);
+		}
+	}
+	return bestItems;
+}
