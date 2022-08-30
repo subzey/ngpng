@@ -43,6 +43,15 @@ export function * createTemplate(jsSource: string, keepNames: ReadonlySet<string
 	const canvasId = new Template([variables._canvas]);
 	const finalZero = new Template([0]);
 
+	const bootstrapColorChannel = new Set(Array.from('012', c => c.charCodeAt(0)));
+	const bootstrapImageY = new Set(Array.from('0123456789', c => c.charCodeAt(0)));
+
+	const bootstrapMagicFunctions = {
+		...MagicFunctions,
+		_colorChannel: () => bootstrapColorChannel,
+		_imageY: () => bootstrapImageY,
+	}
+
 	for (const trimWaka of [true, false]) {
 		for (const swapEquals of [false, true]) {
 			const init = (swapEquals
@@ -51,9 +60,10 @@ export function * createTemplate(jsSource: string, keepNames: ReadonlySet<string
 			);
 			const offset = (trimWaka ? 158 : 159);
 			const onloadTemplate = createJsTemplate(
-				"_ctx=_canvas.getContext`2d`;for(" + init + ";_zero=_ctx.getImageData(" + offset + ",0,_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,0)).data[0];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(_evaledString)",
+				"_ctx=_canvas.getContext`2d`;for(" + init + ";_zero=_ctx.getImageData(" + offset + ",_imageY(),_anyPositiveDigit(),!_ctx.drawImage(this,_negative--,_imageY())).data[_colorChannel()];)_evaledString+=String.fromCharCode(_zero);(_anyDigit(),eval)(_evaledString)",
 				variables,
 				new Set(),
+				bootstrapMagicFunctions,
 			);
 			const html = "<canvas/id=🎨><img/onload=🏭 src=#" + (trimWaka ? "" : ">");
 			const [htmlHead, htmlMid, htmlTail] = html.split(/[🎨🏭]/u).map(createHtmlTemplate);
@@ -94,7 +104,12 @@ function createHtmlTemplate(template: string): Template {
 	return new Template(templateContents, []);
 }
 
-function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVariables, keepNames: ReadonlySet<string>): Template {
+function createJsTemplate(
+	sourceText: string,
+	bootstrapVariables: IBootstrapVariables,
+	keepNames: ReadonlySet<string>,
+	magicFunctions: Record<string, () => ITemplatePart> = MagicFunctions
+): Template {
 	const collectedIds: Map<number, { name: string, end: number }> = new Map();
 	const collectedQuotes: Map<number, { end: number }> = new Map();
 	const collectedMagic: Map<number, { name: MagicFunctionName, end: number }> = new Map();
@@ -114,7 +129,7 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 			const calleeNode = node.expression;
 			if (typescript.isIdentifier(calleeNode) && !identifierIsPropertyName(calleeNode)) {
 				const calleeName = calleeNode.text;
-				if (MagicFunctions.hasOwnProperty(calleeName)) {
+				if (magicFunctions.hasOwnProperty(calleeName)) {
 					const start = node.getStart(sourceFile);
 					const end = node.getEnd();
 					collectedMagic.set(start, { name: calleeName as MagicFunctionName, end });
@@ -168,7 +183,7 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 		}
 		if (collectedMagic.has(index)) {
 			let { name, end } = collectedMagic.get(index)!;
-			templateContents.push(MagicFunctions[name]());
+			templateContents.push(magicFunctions[name]());
 			index = end - 1;
 			continue;
 		}
