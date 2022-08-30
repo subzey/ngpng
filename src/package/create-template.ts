@@ -137,6 +137,12 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 			collectedQuotes.set(node.getStart(), { end: node.getEnd() });
 			return;
 		}
+		if (typescript.isNoSubstitutionTemplateLiteral(node)) {
+			if (!node.parent || !typescript.isTaggedTemplateExpression(node.parent)) {
+				collectedQuotes.set(node.getStart(), { end: node.getEnd() });
+				return;
+			}
+		}
 		node.forEachChild(traverse);
 	}
 	sourceFile.forEachChild(traverse);
@@ -148,8 +154,8 @@ function createJsTemplate(sourceText: string, bootstrapVariables: IBootstrapVari
 			// Quote replacement
 			const { end } = collectedQuotes.get(index)!;
 			const raw = sourceText.slice(index + 1, end - 1);
-			if (!/['"]/.test(raw)) {
-				const quote = createRegularQuote();
+			const quote = createQuote(raw);
+			if (quote.size) {
 				templateContents.push(quote);
 				for (let i = 0; i < raw.length; i++) {
 					templateContents.push(raw.charCodeAt(i));
@@ -269,10 +275,19 @@ function createHtmlWhitespace(): ITemplateVaryingPart {
 	);
 }
 
-function createRegularQuote(): ITemplateVaryingPart {
-	return new Set(
-		Array.from('\"\'', ch => ch.charCodeAt(0))
-	);
+function createQuote(rawContents: string): ITemplateVaryingPart {
+	const rv: Set<number> = new Set();
+	const noEscaped = rawContents.replace(/\/[^]/g, '');
+	if (!noEscaped.includes("'")) {
+		rv.add("'".charCodeAt(0));
+	}
+	if (!noEscaped.includes('"')) {
+		rv.add('"'.charCodeAt(0));
+	}
+	if (!noEscaped.includes('`') && !noEscaped.includes('${')) {
+		rv.add('`'.charCodeAt(0));
+	}
+	return rv;
 }
 
 function createAnyPositiveDigit(): ITemplateVaryingPart {
