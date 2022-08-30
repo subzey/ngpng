@@ -20,6 +20,9 @@ type MagicFunctionName = keyof typeof MagicFunctions;
 
 export function * createTemplate(jsSource: string, keepNames: ReadonlySet<string> = new Set()): IterableIterator<Pick<ProcessingState, 'template' | 'dataStartOffset' | 'shouldCheckHtml'>> {
 	const avoidTemplateIds = new Set([
+		// The <img onload> is called with the image element in its scope.
+		// Setting the variables `x` or `y` won't create an implicit global
+		// as the HTMLImageElement has these properties.
 		// https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/x
 		'x', 'y',
 		...keepNames
@@ -43,13 +46,16 @@ export function * createTemplate(jsSource: string, keepNames: ReadonlySet<string
 	const canvasId = new Template([variables._canvas]);
 	const finalZero = new Template([0]);
 
-	const bootstrapColorChannel = new Set(Array.from('012', c => c.charCodeAt(0)));
-	const bootstrapImageY = new Set(Array.from('0123456789', c => c.charCodeAt(0)));
+	const bootstrapColorChannel = new Set(Array.from('012xy', c => c.charCodeAt(0)));
+	const bootstrapImageY = new Set(Array.from('0123456789xy', c => c.charCodeAt(0)));
 
 	const bootstrapMagicFunctions = {
 		...MagicFunctions,
 		_colorChannel: () => bootstrapColorChannel,
 		_imageY: () => bootstrapImageY,
+		// We cannot redefine the variables with names `x` and `y`
+		// but we can use them!
+		_anyDigit: () => new Set(Array.from('0123456789xy', c => c.charCodeAt(0))),
 	}
 
 	for (const trimWaka of [true, false]) {
